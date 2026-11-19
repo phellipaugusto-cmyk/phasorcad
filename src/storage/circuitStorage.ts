@@ -1,0 +1,329 @@
+import type {
+  CircuitElement,
+  CircuitElementType,
+} from "../core/CircuitElement";
+
+import type {
+  CircuitConnection,
+} from "../core/CircuitConnection";
+
+import {
+  isSourceType,
+} from "../core/CircuitElement";
+
+import {
+  createCircuitTerminals,
+} from "../core/CircuitTerminal";
+
+import {
+  defaultCircuitModel,
+} from "../data/defaultCircuitModel";
+
+export const ELEMENTS_STORAGE_KEY =
+  "phasorcad-elements";
+
+export const CONNECTIONS_STORAGE_KEY =
+  "phasorcad-connections";
+
+const validElementTypes:
+  CircuitElementType[] = [
+    "source",
+    "currentSource",
+    "resistor",
+    "capacitor",
+    "inductor",
+  ];
+
+function isElementType(
+  value: unknown
+): value is CircuitElementType {
+  return (
+    typeof value === "string" &&
+    validElementTypes.includes(
+      value as CircuitElementType
+    )
+  );
+}
+
+export function migrateElement(
+  value: unknown
+): CircuitElement | null {
+  if (
+    typeof value !== "object" ||
+    value === null
+  ) {
+    return null;
+  }
+
+  const candidate =
+    value as Partial<CircuitElement>;
+
+  if (
+    typeof candidate.id !== "string" ||
+    !isElementType(
+      candidate.type
+    ) ||
+    typeof candidate.label !== "string" ||
+    typeof candidate.value !== "number" ||
+    !Number.isFinite(
+      candidate.value
+    ) ||
+    typeof candidate.x !== "number" ||
+    !Number.isFinite(
+      candidate.x
+    ) ||
+    typeof candidate.y !== "number" ||
+    !Number.isFinite(
+      candidate.y
+    )
+  ) {
+    return null;
+  }
+
+  return {
+    id:
+      candidate.id,
+
+    type:
+      candidate.type,
+
+    label:
+      candidate.label,
+
+    value:
+      candidate.value,
+
+    /* Fase só vale para fontes; sem ela a fonte fica em 0°. */
+    ...(isSourceType(
+      candidate.type
+    ) &&
+    typeof candidate.phase === "number" &&
+    Number.isFinite(candidate.phase) &&
+    candidate.phase !== 0
+      ? { phase: candidate.phase }
+      : {}),
+
+    x:
+      candidate.x,
+
+    y:
+      candidate.y,
+
+    terminals:
+      createCircuitTerminals(
+        candidate.id
+      ),
+  };
+}
+
+export function loadElements(): CircuitElement[] {
+  const saved =
+    localStorage.getItem(
+      ELEMENTS_STORAGE_KEY
+    );
+
+  if (!saved) {
+    return defaultCircuitModel.elements;
+  }
+
+  try {
+    const parsed: unknown =
+      JSON.parse(
+        saved
+      );
+
+    if (!Array.isArray(parsed)) {
+      return defaultCircuitModel.elements;
+    }
+
+    if (parsed.length === 0) {
+      return [];
+    }
+
+    const migratedElements =
+      parsed
+        .map(
+          migrateElement
+        )
+        .filter(
+          (
+            element
+          ): element is CircuitElement =>
+            element !== null
+        );
+
+    if (
+      migratedElements.length === 0
+    ) {
+      return defaultCircuitModel.elements;
+    }
+
+    return migratedElements;
+  } catch {
+    return defaultCircuitModel.elements;
+  }
+}
+
+export function migrateConnection(
+  value: unknown
+): CircuitConnection | null {
+  if (
+    typeof value !== "object" ||
+    value === null
+  ) {
+    return null;
+  }
+
+  /*
+   * Aceita também os campos legados from/to de
+   * conexões salvas em versões anteriores.
+   */
+  const candidate =
+    value as Partial<CircuitConnection> & {
+      from?: unknown;
+      to?: unknown;
+    };
+
+  if (typeof candidate.id !== "string") {
+    return null;
+  }
+
+  const legacyFrom =
+    typeof candidate.from === "string"
+      ? candidate.from
+      : null;
+
+  const legacyTo =
+    typeof candidate.to === "string"
+      ? candidate.to
+      : null;
+
+  /*
+   * Conexões salvas antes dos terminais existirem
+   * não possuem fromTerminalId/toTerminalId.
+   *
+   * Convenção do modelo padrão: o fio sai do
+   * terminal direito de "from" e chega ao terminal
+   * esquerdo de "to" (ex.: V1:right -> R1:left).
+   */
+  const fromTerminalId =
+    typeof candidate.fromTerminalId === "string"
+      ? candidate.fromTerminalId
+      : legacyFrom !== null
+        ? `${legacyFrom}:right`
+        : null;
+
+  const toTerminalId =
+    typeof candidate.toTerminalId === "string"
+      ? candidate.toTerminalId
+      : legacyTo !== null
+        ? `${legacyTo}:left`
+        : null;
+
+  if (
+    fromTerminalId === null ||
+    toTerminalId === null
+  ) {
+    return null;
+  }
+
+  return {
+    id: candidate.id,
+    fromTerminalId,
+    toTerminalId,
+  };
+}
+
+export function loadConnections(
+  elements: CircuitElement[]
+): CircuitConnection[] {
+  const saved =
+    localStorage.getItem(
+      CONNECTIONS_STORAGE_KEY
+    );
+
+  if (!saved) {
+    return defaultCircuitModel.connections;
+  }
+
+  try {
+    const parsed: unknown =
+      JSON.parse(
+        saved
+      );
+
+    if (!Array.isArray(parsed)) {
+      return defaultCircuitModel.connections;
+    }
+
+    if (parsed.length === 0) {
+      return [];
+    }
+
+    /*
+     * Descarta conexões órfãs: aquelas cujos
+     * terminais não existem mais nos elementos.
+     */
+    const validTerminalIds =
+      new Set(
+        elements.flatMap(
+          (element) =>
+            element.terminals.map(
+              (terminal) =>
+                terminal.id
+            )
+        )
+      );
+
+    return parsed
+      .map(
+        migrateConnection
+      )
+      .filter(
+        (
+          connection
+        ): connection is CircuitConnection =>
+          connection !== null &&
+          validTerminalIds.has(
+            connection.fromTerminalId
+          ) &&
+          validTerminalIds.has(
+            connection.toTerminalId
+          )
+      );
+  } catch {
+    return defaultCircuitModel.connections;
+  }
+}
+
+export function saveElements(
+  elements: CircuitElement[]
+): void {
+  localStorage.setItem(
+    ELEMENTS_STORAGE_KEY,
+    JSON.stringify(
+      elements
+    )
+  );
+}
+
+export function saveConnections(
+  connections: CircuitConnection[]
+): void {
+  localStorage.setItem(
+    CONNECTIONS_STORAGE_KEY,
+    JSON.stringify(
+      connections
+    )
+  );
+}
+
+export function clearStoredCircuit(): void {
+  localStorage.removeItem(
+    ELEMENTS_STORAGE_KEY
+  );
+
+  localStorage.removeItem(
+    CONNECTIONS_STORAGE_KEY
+  );
+}

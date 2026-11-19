@@ -1,0 +1,831 @@
+import {
+  useEffect,
+  useState,
+} from "react";
+
+import {
+  isSourceType,
+} from "../core/CircuitElement";
+
+import type {
+  CircuitElement,
+} from "../core/CircuitElement";
+
+import type {
+  CircuitConnection,
+} from "../core/CircuitConnection";
+
+import {
+  getElementIdFromTerminalId,
+} from "../core/CircuitConnection";
+
+import {
+  createCircuitTerminals,
+} from "../core/CircuitTerminal";
+
+import {
+  defaultCircuitModel,
+} from "../data/defaultCircuitModel";
+
+import {
+  clearStoredCircuit,
+  loadConnections,
+  loadElements,
+  saveConnections,
+  saveElements,
+} from "../storage/circuitStorage";
+
+import {
+  parseCircuitFile,
+  serializeCircuit,
+} from "../storage/circuitFile";
+
+import {
+  loadShowDebugPanels,
+  saveShowDebugPanels,
+} from "../storage/uiPreferences";
+
+/*
+ * Estado do editor (componentes, conexões, seleção,
+ * frequência) e as ações que o alteram.
+ */
+export function useCircuitEditor() {
+  const [
+    elements,
+    setElements,
+  ] =
+    useState<CircuitElement[]>(
+      loadElements
+    );
+
+  const [
+    connections,
+    setConnections,
+  ] =
+    useState<CircuitConnection[]>(
+      () =>
+        loadConnections(
+          elements
+        )
+    );
+
+  const [
+    frequency,
+    setFrequency,
+  ] =
+    useState(
+      defaultCircuitModel.frequency
+    );
+
+  const initialSource =
+    elements.find(
+      (element) =>
+        element.type === "source"
+    );
+
+  const [
+    sourceVoltage,
+    setSourceVoltage,
+  ] =
+    useState(
+      initialSource?.value ?? 0
+    );
+
+  const [
+    selectedElementId,
+    setSelectedElementId,
+  ] =
+    useState<string | null>(
+      null
+    );
+
+  const [
+    selectedConnectionId,
+    setSelectedConnectionId,
+  ] =
+    useState<string | null>(
+      null
+    );
+
+  const [
+    editingElementId,
+    setEditingElementId,
+  ] =
+    useState<string | null>(
+      null
+    );
+
+  const [
+    showDebugPanels,
+    setShowDebugPanels,
+  ] =
+    useState(
+      loadShowDebugPanels
+    );
+
+  useEffect(() => {
+    saveElements(
+      elements
+    );
+  }, [elements]);
+
+  useEffect(() => {
+    saveConnections(
+      connections
+    );
+  }, [connections]);
+
+  useEffect(() => {
+    saveShowDebugPanels(
+      showDebugPanels
+    );
+  }, [showDebugPanels]);
+
+  const selectedElement =
+    elements.find(
+      (element) =>
+        element.id ===
+        selectedElementId
+    ) ?? null;
+
+  const selectedConnection =
+    connections.find(
+      (connection) =>
+        connection.id ===
+        selectedConnectionId
+    ) ?? null;
+
+  const sourceElement =
+    elements.find(
+      (element) =>
+        isSourceType(element.type)
+    );
+
+  const hasSource =
+    sourceElement !== undefined;
+
+  const connectedElementIds =
+    new Set<string>();
+
+  connections.forEach(
+    (connection) => {
+      connectedElementIds.add(
+        getElementIdFromTerminalId(
+          connection.fromTerminalId
+        )
+      );
+
+      connectedElementIds.add(
+        getElementIdFromTerminalId(
+          connection.toTerminalId
+        )
+      );
+    }
+  );
+
+  const selectedElementIsProtected =
+    selectedElement
+      ? connectedElementIds.has(
+          selectedElement.id
+        )
+      : false;
+
+  function newCircuit() {
+    const shouldCreate =
+      window.confirm(
+        "Criar um novo circuito? Todos os componentes e conexões atuais serão removidos."
+      );
+
+    if (!shouldCreate) {
+      return;
+    }
+
+    clearStoredCircuit();
+
+    setElements(
+      []
+    );
+
+    setConnections(
+      []
+    );
+
+    setSelectedElementId(
+      null
+    );
+
+    setSelectedConnectionId(
+      null
+    );
+
+    setEditingElementId(
+      null
+    );
+
+    setSourceVoltage(
+      0
+    );
+
+    setFrequency(
+      defaultCircuitModel.frequency
+    );
+  }
+
+  function saveCircuitToFile() {
+    const text =
+      serializeCircuit(
+        elements,
+        connections,
+        frequency
+      );
+
+    const url =
+      URL.createObjectURL(
+        new Blob(
+          [text],
+          {
+            type:
+              "application/json",
+          }
+        )
+      );
+
+    const link =
+      document.createElement(
+        "a"
+      );
+
+    link.href = url;
+
+    link.download =
+      "circuito-phasorcad.json";
+
+    document.body.appendChild(
+      link
+    );
+
+    link.click();
+
+    link.remove();
+
+    URL.revokeObjectURL(
+      url
+    );
+  }
+
+  async function openCircuitFile(
+    file: File
+  ) {
+    let text: string;
+
+    try {
+      text =
+        await file.text();
+    } catch {
+      window.alert(
+        "Não foi possível ler o arquivo."
+      );
+
+      return;
+    }
+
+    const parsed =
+      parseCircuitFile(
+        text
+      );
+
+    if (!parsed.ok) {
+      window.alert(
+        `Não foi possível abrir o circuito: ${parsed.error}`
+      );
+
+      return;
+    }
+
+    const shouldOpen =
+      window.confirm(
+        "Abrir este circuito? O circuito atual será substituído."
+      );
+
+    if (!shouldOpen) {
+      return;
+    }
+
+    const voltageSource =
+      parsed.data.elements.find(
+        (element) =>
+          element.type ===
+          "source"
+      );
+
+    setElements(
+      parsed.data.elements
+    );
+
+    setConnections(
+      parsed.data.connections
+    );
+
+    setFrequency(
+      parsed.data.frequency
+    );
+
+    setSourceVoltage(
+      voltageSource?.value ?? 0
+    );
+
+    setSelectedElementId(
+      null
+    );
+
+    setSelectedConnectionId(
+      null
+    );
+
+    setEditingElementId(
+      null
+    );
+  }
+
+  /* Fase (°) da fonte selecionada; 0 quando não foi informada. */
+  function getSelectedPhase(): number {
+    return selectedElement?.phase ?? 0;
+  }
+
+  function updateSelectedPhase(
+    degrees: number
+  ) {
+    if (
+      !selectedElement ||
+      !isSourceType(
+        selectedElement.type
+      ) ||
+      !Number.isFinite(degrees)
+    ) {
+      return;
+    }
+
+    const elementId =
+      selectedElement.id;
+
+    setElements(
+      (currentElements) =>
+        currentElements.map(
+          (element) =>
+            element.id === elementId
+              ? {
+                  ...element,
+                  phase: degrees,
+                }
+              : element
+        )
+    );
+  }
+
+  function getNextElementId(
+    type: CircuitElement["type"]
+  ): string {
+    const prefixes: Record<
+      CircuitElement["type"],
+      string
+    > = {
+      source: "V",
+      currentSource: "I",
+      resistor: "R",
+      capacitor: "C",
+      inductor: "L",
+    };
+
+    const prefix =
+      prefixes[type];
+
+    const existingNumbers =
+      elements
+        .filter(
+          (element) =>
+            element.type === type
+        )
+        .map(
+          (element) => {
+            const expression =
+              new RegExp(
+                `^${prefix}`
+              );
+
+            const number =
+              Number(
+                element.id.replace(
+                  expression,
+                  ""
+                )
+              );
+
+            return Number.isFinite(
+              number
+            )
+              ? number
+              : 0;
+          }
+        );
+
+    const highestNumber =
+      existingNumbers.length > 0
+        ? Math.max(
+            ...existingNumbers
+          )
+        : 0;
+
+    return `${prefix}${highestNumber + 1}`;
+  }
+
+  function getNewElementPosition(): {
+    x: number;
+    y: number;
+  } {
+    /*
+     * Novos componentes entram em linhas alinhadas à grade
+     * de 20 px, com o mesmo y por linha, como em um
+     * esquemático.
+     */
+    const index =
+      elements.length;
+
+    const column =
+      index % 5;
+
+    const row =
+      Math.floor(
+        index / 5
+      );
+
+    return {
+      x:
+        40 +
+        column * 140,
+
+      y:
+        Math.min(
+          120 +
+            row * 160,
+          360
+        ),
+    };
+  }
+
+  function addElement(
+    type: CircuitElement["type"],
+    defaultValue: number
+  ) {
+    const id =
+      getNextElementId(
+        type
+      );
+
+    const position =
+      getNewElementPosition();
+
+    const newElement: CircuitElement = {
+      id,
+      type,
+      label:
+        id,
+      value:
+        defaultValue,
+      x:
+        position.x,
+      y:
+        position.y,
+      terminals:
+        createCircuitTerminals(
+          id
+        ),
+    };
+
+    setElements(
+      (
+        currentElements
+      ) => [
+        ...currentElements,
+        newElement,
+      ]
+    );
+
+    setSelectedConnectionId(
+      null
+    );
+
+    setSelectedElementId(
+      id
+    );
+
+    setEditingElementId(
+      null
+    );
+  }
+
+  function addSource() {
+    const initialVoltage =
+      220;
+
+    addElement(
+      "source",
+      initialVoltage
+    );
+
+    /* O estado legado guarda a tensão da primeira fonte de tensão. */
+    if (
+      !elements.some(
+        (element) =>
+          element.type === "source"
+      )
+    ) {
+      setSourceVoltage(
+        initialVoltage
+      );
+    }
+  }
+
+  function addCurrentSource() {
+    addElement(
+      "currentSource",
+      1
+    );
+  }
+
+  function addResistor() {
+    addElement(
+      "resistor",
+      100
+    );
+  }
+
+  function addCapacitor() {
+    addElement(
+      "capacitor",
+      100 / 1_000_000
+    );
+  }
+
+  function addInductor() {
+    addElement(
+      "inductor",
+      100 / 1000
+    );
+  }
+
+  function removeSelectedElement() {
+    if (!selectedElement) {
+      return;
+    }
+
+    if (
+      connectedElementIds.has(
+        selectedElement.id
+      )
+    ) {
+      return;
+    }
+
+    const elementId =
+      selectedElement.id;
+
+    const removingSource =
+      selectedElement.type === "source";
+
+    setElements(
+      (
+        currentElements
+      ) =>
+        currentElements.filter(
+          (element) =>
+            element.id !== elementId
+        )
+    );
+
+    setConnections(
+      (
+        currentConnections
+      ) =>
+        currentConnections.filter(
+          (connection) =>
+            getElementIdFromTerminalId(
+              connection.fromTerminalId
+            ) !== elementId &&
+            getElementIdFromTerminalId(
+              connection.toTerminalId
+            ) !== elementId
+        )
+    );
+
+    if (removingSource) {
+      setSourceVoltage(
+        0
+      );
+    }
+
+    setSelectedElementId(
+      null
+    );
+
+    setSelectedConnectionId(
+      null
+    );
+
+    setEditingElementId(
+      null
+    );
+  }
+
+  function removeSelectedConnection() {
+    if (!selectedConnection) {
+      return;
+    }
+
+    const connectionId =
+      selectedConnection.id;
+
+    setConnections(
+      (
+        currentConnections
+      ) =>
+        currentConnections.filter(
+          (connection) =>
+            connection.id !==
+            connectionId
+        )
+    );
+
+    setSelectedConnectionId(
+      null
+    );
+  }
+
+  function getDisplayValue(): number {
+    if (!selectedElement) {
+      return 0;
+    }
+
+    switch (
+      selectedElement.type
+    ) {
+      case "capacitor":
+        return (
+          selectedElement.value *
+          1_000_000
+        );
+
+      case "inductor":
+        return (
+          selectedElement.value *
+          1000
+        );
+
+      default:
+        return selectedElement.value;
+    }
+  }
+
+  function getUnit(): string {
+    if (!selectedElement) {
+      return "";
+    }
+
+    switch (
+      selectedElement.type
+    ) {
+      case "source":
+        return "V";
+
+      case "currentSource":
+        return "A";
+
+      case "resistor":
+        return "Ω";
+
+      case "capacitor":
+        return "µF";
+
+      case "inductor":
+        return "mH";
+
+      default:
+        return "";
+    }
+  }
+
+  function updateSelectedElement(
+    value: number
+  ) {
+    if (!selectedElement) {
+      return;
+    }
+
+    let convertedValue =
+      value;
+
+    switch (
+      selectedElement.type
+    ) {
+      case "capacitor":
+        convertedValue =
+          Math.max(
+            value,
+            0.000001
+          ) / 1_000_000;
+        break;
+
+      case "inductor":
+        convertedValue =
+          Math.max(
+            value,
+            0.000001
+          ) / 1000;
+        break;
+
+      case "resistor":
+        convertedValue =
+          Math.max(
+            value,
+            0.000001
+          );
+        break;
+
+      case "source":
+        convertedValue =
+          Math.max(
+            value,
+            0
+          );
+
+        setSourceVoltage(
+          convertedValue
+        );
+        break;
+
+      case "currentSource":
+        convertedValue =
+          Math.max(
+            value,
+            0
+          );
+        break;
+    }
+
+    setElements(
+      (
+        currentElements
+      ) =>
+        currentElements.map(
+          (element) =>
+            element.id ===
+            selectedElement.id
+              ? {
+                  ...element,
+
+                  value:
+                    convertedValue,
+                }
+              : element
+        )
+    );
+  }
+
+  return {
+    elements,
+    setElements,
+    connections,
+    setConnections,
+    frequency,
+    setFrequency,
+    sourceVoltage,
+    setSourceVoltage,
+    selectedElementId,
+    setSelectedElementId,
+    selectedConnectionId,
+    setSelectedConnectionId,
+    editingElementId,
+    setEditingElementId,
+    showDebugPanels,
+    setShowDebugPanels,
+    selectedElement,
+    selectedConnection,
+    hasSource,
+    connectedElementIds,
+    selectedElementIsProtected,
+    newCircuit,
+    saveCircuitToFile,
+    openCircuitFile,
+    addSource,
+    addCurrentSource,
+    addResistor,
+    addCapacitor,
+    addInductor,
+    removeSelectedElement,
+    removeSelectedConnection,
+    getDisplayValue,
+    getUnit,
+    updateSelectedElement,
+    getSelectedPhase,
+    updateSelectedPhase,
+  };
+}
