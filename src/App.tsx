@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { isSourceType } from "./core/CircuitElement";
 import { useCircuitAnalysis } from "./hooks/useCircuitAnalysis";
 import { useCircuitEditor } from "./hooks/useCircuitEditor";
@@ -63,6 +63,9 @@ function App() {
     updateSelectedSwitchControl,
     updateSelectedContactor,
     addContactor,
+    addPushButton,
+    pulseSwitch,
+    syncCoilStates,
     removeSelectedElement,
     removeSelectedConnection,
     getDisplayValue,
@@ -95,6 +98,11 @@ function App() {
     frequency,
     sourceVoltage
   );
+
+  /* Memória das bobinas: guarda o estado calculado (selo). */
+  useEffect(() => {
+    syncCoilStates(coilStates);
+  }, [coilStates]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [view, setView] = useState<"circuit" | "analysis">("circuit");
   const [resultsOpen, setResultsOpen] = useState(false);
@@ -255,6 +263,7 @@ function App() {
                   (item) => item.type === "contactor"
                 )}
                 onToggle={toggleSelectedSwitch}
+                onPulse={() => pulseSwitch(selectedElement.id)}
                 onControlChange={updateSelectedSwitchControl}
               />
             ) : (
@@ -544,6 +553,7 @@ function App() {
           onAddLamp={addLamp}
           onAddSwitch={addSwitch}
           onAddContactor={addContactor}
+          onAddPushButton={addPushButton}
           onLoadBenchPreset={loadBenchPreset}
           onExportReport={exportReport}
           onOpenAnalysis={() => setView("analysis")}
@@ -647,6 +657,7 @@ function App() {
           setEditingElementId={
             setEditingElementId
           }
+          onPulseSwitch={pulseSwitch}
         />
       </div>
 

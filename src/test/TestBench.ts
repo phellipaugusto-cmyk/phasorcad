@@ -93,17 +93,43 @@ near("|I| lâmpada 1 (A)", off.mag(off.get("LP1").current), 0, 1e-6);
 near("P fase B cai 1 lâmpada (W)", Math.abs(off.get("VB").complexPower.real), lampPower / 2 + motorPower, 0.01);
 near("tensão sobre S1 aberto (V)", off.mag(off.get("S1").voltage), 129.1, 0.01);
 
-console.log("Tecla 3 desligada: bobina cai e o motor para");
-const noCoil = solve(withChange(preset.elements, "S3", { closed: false }), preset.connections);
+/* Toque na botoeira: pressiona, resolve, solta, resolve (com memória). */
+function pulse(elements: CircuitElement[], id: string) {
+  const pressed = solve(withChange(elements, id, { pressed: true }), preset.connections);
+  const released = solve(
+    withChange(pressed.elements, id, { pressed: false }),
+    preset.connections
+  );
+  return { pressed, released };
+}
+const coilOn = (r: ReturnType<typeof solve>) => r.resolved.coilStates.K1?.energized === true;
+
+console.log("Partida com selo");
+expect("abre selado (K1 energizada)", coilOn(all));
+const stop = pulse(preset.elements, "B0");
+expect("B0 pressionada: bobina cai", !coilOn(stop.pressed));
+expect("B0 solta: continua desligado (selo aberto)", !coilOn(stop.released));
+const noCoil = stop.released;
 expect("bobina desenergizada", noCoil.resolved.coilStates.K1?.energized === false);
 expect("contato K1 abriu", noCoil.elements.find((e) => e.id === "K1A")!.closed === false);
 near("|I| motor (A)", noCoil.mag(noCoil.get("M1").current), 0, 1e-6);
 near("P fase B = só lâmpadas (W)", Math.abs(noCoil.get("VB").complexPower.real), lampPower, 0.01);
+const start = pulse(noCoil.elements, "B1");
+expect("B1 pressionada: bobina arma", coilOn(start.pressed));
+expect("B1 solta: selo mantém ligado", coilOn(start.released));
+expect("selo fechado", start.released.elements.find((e) => e.id === "K1S")!.closed === true);
+expect("B1 voltou a abrir", start.released.elements.find((e) => e.id === "B1")!.closed === false);
+near("motor voltou (P fase B, W)", Math.abs(start.released.get("VB").complexPower.real), 167.18, 0.01);
+const noSeal = pulse(
+  withChange(noCoil.elements, "K1S", { controlledBy: undefined, closed: false }),
+  "B1"
+);
+expect("sem selo: solta B1 e o motor para (comando por pulso)", coilOn(noSeal.pressed) && !coilOn(noSeal.released));
 
 console.log("Tudo desligado (como no início do vídeo)");
 let dark = withChange(preset.elements, "S1", { closed: false });
 dark = withChange(dark, "S2", { closed: false });
-dark = withChange(dark, "S3", { closed: false });
+dark = withChange(dark, "K1", { energized: false });
 const d = solve(dark, preset.connections);
 expect("fase B sem carga não bloqueia o cálculo", d.state === "closed");
 near("P fase A = só o touch ≈ 5 W medido", Math.abs(d.get("VA").complexPower.real), 5, 0.05);

@@ -64,6 +64,9 @@ import {
  * Estado do editor (componentes, conexões, seleção,
  * frequência) e as ações que o alteram.
  */
+/* Tempo que a botoeira fica pressionada num toque (ms). */
+const PULSE_MS = 500;
+
 export function useCircuitEditor() {
   const [
     elements,
@@ -506,6 +509,15 @@ export function useCircuitEditor() {
           }
         }
 
+        if (change.momentary !== undefined) {
+          if (change.momentary) {
+            next.momentary = true;
+          } else {
+            delete next.momentary;
+            delete next.pressed;
+          }
+        }
+
         if (change.normallyClosed !== undefined) {
           if (change.normallyClosed) {
             next.normallyClosed = true;
@@ -517,6 +529,51 @@ export function useCircuitEditor() {
         return next;
       })
     );
+  }
+
+  /*
+   * Toque numa botoeira: pressiona e solta depois de um instante.
+   * Nesse intervalo a análise roda e a bobina guarda o estado.
+   */
+  function pulseSwitch(elementId: string) {
+    const setPressed = (pressed: boolean) =>
+      setElements((currentElements) =>
+        currentElements.map((element) =>
+          element.id === elementId && element.momentary
+            ? { ...element, pressed }
+            : element
+        )
+      );
+
+    setPressed(true);
+    window.setTimeout(() => setPressed(false), PULSE_MS);
+  }
+
+  /*
+   * Guarda nas bobinas o estado calculado (memória para o selo).
+   * Sem mudança, devolve a mesma lista e o React não re-renderiza.
+   */
+  function syncCoilStates(states: Record<string, { energized: boolean }>) {
+    setElements((currentElements) => {
+      let changed = false;
+
+      const next = currentElements.map((element) => {
+        const state = states[element.id];
+
+        if (
+          element.type !== "contactor" ||
+          !state ||
+          (element.energized === true) === state.energized
+        ) {
+          return element;
+        }
+
+        changed = true;
+        return { ...element, energized: state.energized };
+      });
+
+      return changed ? next : currentElements;
+    });
   }
 
   function updateSelectedContactor(changes: Partial<ContactorParameters>) {
@@ -813,6 +870,29 @@ export function useCircuitEditor() {
       "switch",
       0
     );
+  }
+
+  /* Botoeira NA (pulso). */
+  function addPushButton() {
+    const id = getNextElementId("switch");
+    const position = getNewElementPosition();
+
+    setElements((currentElements) => [
+      ...currentElements,
+      {
+        id,
+        type: "switch",
+        label: `B ${id}`,
+        value: 0,
+        momentary: true,
+        x: position.x,
+        y: position.y,
+        terminals: createCircuitTerminals(id),
+      },
+    ]);
+    setSelectedConnectionId(null);
+    setSelectedElementId(id);
+    setEditingElementId(null);
   }
 
   /* Bobina do contator + um contato NA já ligado a ela. */
@@ -1149,6 +1229,9 @@ export function useCircuitEditor() {
     updateSelectedSwitchControl,
     updateSelectedContactor,
     addContactor,
+    addPushButton,
+    pulseSwitch,
+    syncCoilStates,
     removeSelectedElement,
     removeSelectedConnection,
     getDisplayValue,

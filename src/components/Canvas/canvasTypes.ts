@@ -28,6 +28,9 @@ export interface CanvasProps {
 
   elements: CircuitElement[];
 
+  /* Toque numa botoeira (pressiona e solta). */
+  onPulseSwitch?: (elementId: string) => void;
+
   setElements: (
     elements: CircuitElement[]
   ) => void;

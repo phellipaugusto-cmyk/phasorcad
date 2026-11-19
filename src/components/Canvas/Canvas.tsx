@@ -91,6 +91,7 @@ export function Canvas({
   setSelectedConnectionId,
   editingElementId,
   setEditingElementId,
+  onPulseSwitch,
 }: CanvasProps) {
   /*
    * O Canvas ocupa toda a largura disponível e vai até o fim da
@@ -653,6 +654,12 @@ export function Canvas({
     if (element.type === "switch") {
       /* Contato de contator: o estado vem da bobina. */
       if (element.controlledBy) {
+        return;
+      }
+
+      /* Botoeira: um toque (pressiona e solta). */
+      if (element.momentary) {
+        onPulseSwitch?.(element.id);
         return;
       }
 

@@ -158,10 +158,14 @@ export function migrateElement(
           ...(candidate.normallyClosed === true
             ? { normallyClosed: true }
             : {}),
+          ...(candidate.momentary === true ? { momentary: true } : {}),
         }
       : {}),
     ...(candidate.type === "contactor"
-      ? { contactor: getContactorParameters(candidate) }
+      ? {
+          contactor: getContactorParameters(candidate),
+          ...(candidate.energized === true ? { energized: true } : {}),
+        }
       : {}),
     ...(sanitizeMeasured(candidate.measured)
       ? { measured: sanitizeMeasured(candidate.measured) }

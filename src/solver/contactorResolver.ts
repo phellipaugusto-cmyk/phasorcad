@@ -14,7 +14,7 @@ import { getCircuitState } from "./CircuitTopology";
  * nas bobinas depende dos contatos (ex.: um contato auxiliar que
  * alimenta outra bobina). Por isso a solução é iterativa:
  *
- *   1. parte de todas as bobinas desenergizadas;
+ *   1. parte do estado anterior das bobinas (memória);
  *   2. ajusta os contatos (NA fecha / NF abre com bobina energizada);
  *   3. resolve o circuito e mede a tensão de cada bobina;
  *   4. repete até as bobinas não mudarem de estado.
@@ -51,11 +51,35 @@ export function isControlledContact(
   );
 }
 
+/* Botoeira manual: NA fecha só pressionada; NF abre só pressionada. */
+function applyPushButtons(elements: CircuitElement[]): CircuitElement[] {
+  return elements.map((element) => {
+    if (
+      element.type !== "switch" ||
+      !element.momentary ||
+      isControlledContact(element, elements)
+    ) {
+      return element;
+    }
+
+    const pressed = element.pressed === true;
+    const closed = element.normallyClosed ? !pressed : pressed;
+
+    return element.closed === closed ? element : { ...element, closed };
+  });
+}
+
 function applyCoilStates(
   elements: CircuitElement[],
   energized: Record<string, boolean>
 ): CircuitElement[] {
   return elements.map((element) => {
+    if (element.type === "contactor") {
+      const on = energized[element.id] === true;
+
+      return element.energized === on ? element : { ...element, energized: on };
+    }
+
     if (!isControlledContact(element, elements)) {
       return element;
     }
@@ -122,17 +146,27 @@ function measureCoils(
 }
 
 export function resolveContactors(
-  elements: CircuitElement[],
+  input: CircuitElement[],
   connections: CircuitConnection[],
   frequency: number
 ): ContactorResolution {
+  const elements = applyPushButtons(input);
   const hasCoil = elements.some((element) => element.type === "contactor");
 
   if (!hasCoil) {
     return { elements, coilStates: {}, converged: true, iterations: 0 };
   }
 
+  /*
+   * Parte do estado em que as bobinas estavam (memória). Sem isso,
+   * um contato de selo nunca seguraria o contator.
+   */
   let energized: Record<string, boolean> = {};
+  elements.forEach((element) => {
+    if (element.type === "contactor" && element.energized) {
+      energized[element.id] = true;
+    }
+  });
   let current = applyCoilStates(elements, energized);
   let coilStates: Record<string, CoilState> = {};
 

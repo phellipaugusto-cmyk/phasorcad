@@ -10,20 +10,23 @@ import { createCircuitTerminals } from "../core/CircuitTerminal";
  * hélice). O medidor mostrou só as fases A e B energizadas (C = 0 V):
  * sistema 127/220 V com dois fios-fase + neutro.
  *
- * Automação (o contator trabalha sozinho):
+ * Automação (partida do motor com contato de selo):
  *
  *   Fase A (125,8 V ∠0°)    → módulo touch (consumo próprio, ~5 W)
- *                            → tecla 3 → bobina do contator K1
+ *                            → B0 desliga (NF) ─┬─ B1 liga (NA) ─┬─ bobina K1
+ *                                               └─ selo K1 (NA) ──┘
  *   Fase B (129,1 V ∠−120°) → tecla 1 → lâmpada 1 (60 W)
  *                            → tecla 2 → lâmpada 2 (60 W)
- *                            → contato NA de K1 → motor
+ *                            → contato de força K1 (NA) → motor
  *
- * Ligar a tecla 3 energiza K1, que fecha o contato e liga o motor.
+ * Um toque em B1 energiza K1; o selo (contato auxiliar de K1, em
+ * paralelo com B1) mantém a bobina depois que B1 é solta. Um toque
+ * em B0 interrompe a bobina, o selo abre e o motor para.
  *
  * Leituras do vídeo:
  *   tudo desligado: A = 125,4 V, 5 W     B = 129,3 V, 0 W
  *   tudo ligado:    A = 125,8 V, 8 W     B = 129,1 V, 167 W
- * O exemplo abre com tudo ligado e essas leituras para comparar.
+ * O exemplo abre com tudo ligado (K1 já selado) e essas leituras.
  *
  * Motor genérico de ventilador: 127 V, 45 W no eixo, η = 35 %,
  * FP = 0,95 (capacitor permanente), a vazio (sem hélice).
@@ -71,27 +74,33 @@ export function createBenchPreset(): {
       measured: { voltage: 125.8, power: 8 },
     }),
     element("RT", "resistor", "Módulo touch", 3165, 360, 40),
-    element("S3", "switch", "Touch tecla 3", 0, 200, 150, { closed: true }),
-    element("K1", "contactor", "Bobina K1", 8, 360, 150, {
+    element("B0", "switch", "B0 Desliga", 0, 160, 150, {
+      momentary: true,
+      normallyClosed: true,
+    }),
+    element("B1", "switch", "B1 Liga", 0, 300, 150, { momentary: true }),
+    element("K1S", "switch", "Selo K1", 0, 300, 260, { controlledBy: "K1" }),
+    element("K1", "contactor", "Bobina K1", 8, 460, 150, {
       contactor: { ratedVoltage: 127, powerFactor: 0.35 },
+      energized: true,
     }),
 
-    element("VB", "source", "Fase B", 129.1, 40, 380, {
+    element("VB", "source", "Fase B", 129.1, 40, 480, {
       phase: -120,
       measured: { voltage: 129.1, power: 167 },
     }),
-    element("S1", "switch", "Touch tecla 1", 0, 200, 270, { closed: true }),
-    element("LP1", "lamp", "Lâmpada 1", 60, 360, 270, {
+    element("S1", "switch", "Touch tecla 1", 0, 200, 400, { closed: true }),
+    element("LP1", "lamp", "Lâmpada 1", 60, 360, 400, {
       lamp: { ratedVoltage: 127 },
     }),
-    element("S2", "switch", "Touch tecla 2", 0, 200, 390, { closed: true }),
-    element("LP2", "lamp", "Lâmpada 2", 60, 360, 390, {
+    element("S2", "switch", "Touch tecla 2", 0, 200, 510, { closed: true }),
+    element("LP2", "lamp", "Lâmpada 2", 60, 360, 510, {
       lamp: { ratedVoltage: 127 },
     }),
-    element("K1A", "switch", "Contato K1", 0, 200, 510, {
+    element("K1A", "switch", "Contato K1", 0, 200, 620, {
       controlledBy: "K1",
     }),
-    element("M1", "motor", "Motor do ventilador", 0.045, 360, 510, {
+    element("M1", "motor", "Motor do ventilador", 0.045, 360, 620, {
       motor: {
         efficiency: 0.35,
         powerFactor: 0.95,
@@ -110,10 +119,13 @@ export function createBenchPreset(): {
     wire("LP2:right", "VB:left"),
     wire("M1:right", "VB:left"),
 
-    /* Fase A → touch e comando da bobina. */
+    /* Fase A → touch e comando com selo. */
     wire("VA:right", "RT:left"),
-    wire("VA:right", "S3:left"),
-    wire("S3:right", "K1:left"),
+    wire("VA:right", "B0:left"),
+    wire("B0:right", "B1:left"),
+    wire("B0:right", "K1S:left"),
+    wire("B1:right", "K1:left"),
+    wire("K1S:right", "K1:left"),
 
     /* Fase B → cargas. */
     wire("VB:right", "S1:left"),

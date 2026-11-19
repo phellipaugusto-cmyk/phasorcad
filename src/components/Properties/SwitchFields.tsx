@@ -4,6 +4,7 @@ export interface SwitchControlChange {
   /* "" = manual (sem bobina). */
   controlledBy?: string;
   normallyClosed?: boolean;
+  momentary?: boolean;
 }
 
 interface SwitchFieldsProps {
@@ -13,6 +14,7 @@ interface SwitchFieldsProps {
   resolved: CircuitElement;
   contactors: CircuitElement[];
   onToggle: () => void;
+  onPulse: () => void;
   onControlChange: (change: SwitchControlChange) => void;
 }
 
@@ -22,6 +24,7 @@ export function SwitchFields({
   resolved,
   contactors,
   onToggle,
+  onPulse,
   onControlChange,
 }: SwitchFieldsProps) {
   const controller = contactors.find(
@@ -77,13 +80,54 @@ export function SwitchFields({
           </p>
         </>
       ) : (
-        <button
-          type="button"
-          onClick={onToggle}
-          style={{ marginTop: "6px", cursor: "pointer" }}
-        >
-          {closed ? "Desligar" : "Ligar"}
-        </button>
+        <>
+          <label className="motor-field">
+            <span>Tipo</span>
+            <select
+              value={
+                element.momentary
+                  ? element.normallyClosed
+                    ? "pulso-NF"
+                    : "pulso-NA"
+                  : "retem"
+              }
+              onChange={(event) => {
+                const value = event.target.value;
+                onControlChange({
+                  momentary: value !== "retem",
+                  normallyClosed: value === "pulso-NF",
+                });
+              }}
+            >
+              <option value="retem">Interruptor (retém)</option>
+              <option value="pulso-NA">Botoeira NA (liga)</option>
+              <option value="pulso-NF">Botoeira NF (desliga)</option>
+            </select>
+          </label>
+          {element.momentary ? (
+            <>
+              <button
+                type="button"
+                onClick={onPulse}
+                style={{ marginTop: "6px", cursor: "pointer" }}
+              >
+                Pressionar
+              </button>
+              <p className="motor-summary">
+                Botoeira: fica pressionada por um instante e volta
+                sozinha. No desenho, duplo clique também pressiona.
+              </p>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={onToggle}
+              style={{ marginTop: "6px", cursor: "pointer" }}
+            >
+              {closed ? "Desligar" : "Ligar"}
+            </button>
+          )}
+        </>
       )}
     </div>
   );

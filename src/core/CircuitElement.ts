@@ -84,8 +84,18 @@ export interface CircuitElement {
    */
   controlledBy?: string;
 
-  /* Contato NF (fecha com a bobina desenergizada). Ausente = NA. */
+  /*
+   * Contato NF. Comandado: fecha com a bobina desenergizada.
+   * Botoeira: fechado em repouso, abre ao pressionar. Ausente = NA.
+   */
   normallyClosed?: boolean;
+
+  /*
+   * Botoeira (só para type "switch" manual): volta sozinha ao
+   * repouso. `pressed` é transitório (não vai para o arquivo).
+   */
+  momentary?: boolean;
+  pressed?: boolean;
 
   /*
    * Bobina de contator (só para type "contactor"): `value` é a
@@ -95,6 +105,13 @@ export interface CircuitElement {
     ratedVoltage: number;
     powerFactor: number;
   };
+
+  /*
+   * Memória da bobina (só para type "contactor"): estado em que
+   * ela ficou na última análise. É o que permite o contato de selo
+   * manter o contator ligado depois que a botoeira é solta.
+   */
+  energized?: boolean;
 
   /*
    * Leituras feitas na bancada (opcional), para comparar com o

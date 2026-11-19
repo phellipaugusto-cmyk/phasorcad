@@ -13,6 +13,7 @@ interface ToolboxProps {
   onAddLamp: () => void;
   onAddSwitch: () => void;
   onAddContactor: () => void;
+  onAddPushButton: () => void;
   onLoadBenchPreset: () => void;
   /* Só no celular: abre a página de análise. */
   onExportReport?: () => void;
@@ -87,6 +88,11 @@ const ICONS = {
       <circle cx="23" cy="14" r="1.6" />
     </Icon>
   ),
+  pushButton: (
+    <Icon>
+      <path d="M2 20 h8 M22 20 h8 M10 20 h12 M16 20 v-9 M11 8 h10" />
+    </Icon>
+  ),
   contactor: (
     <Icon>
       <path d="M2 14 h8 M22 14 h8" />
@@ -114,6 +120,7 @@ export function Toolbox({
   onAddLamp,
   onAddSwitch,
   onAddContactor,
+  onAddPushButton,
   onLoadBenchPreset,
   onExportReport,
   onOpenAnalysis,
@@ -147,6 +154,7 @@ export function Toolbox({
         {part(ICONS.motor, "Motor", onAddMotor, "Adicionar um Motor (carga por dados de placa)")}
         {part(ICONS.lamp, "Lâmpada", onAddLamp, "Adicionar uma Lâmpada incandescente (resistiva)")}
         {part(ICONS.switch, "Interruptor", onAddSwitch, "Adicionar um Interruptor (duplo clique liga/desliga)")}
+        {part(ICONS.pushButton, "Botoeira", onAddPushButton, "Adicionar uma Botoeira (pulso; duplo clique pressiona)")}
         {part(ICONS.contactor, "Contator", onAddContactor, "Adicionar um Contator (bobina + contato NA comandado)")}
         <span className="tb-sep tb-files" />
         <div className="tb-files tb-filegroup">

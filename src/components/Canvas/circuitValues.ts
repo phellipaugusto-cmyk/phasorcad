@@ -9,9 +9,13 @@ export function formatElementValue(element: CircuitElement): string {
   if (element.type === "switch") {
     const state = element.closed === false ? "aberto" : "fechado";
 
-    return element.controlledBy
-      ? `${element.normallyClosed ? "NF" : "NA"} ${element.controlledBy}: ${state}`
-      : state;
+    const kind = element.normallyClosed ? "NF" : "NA";
+
+    if (element.controlledBy) {
+      return `${kind} ${element.controlledBy}: ${state}`;
+    }
+
+    return element.momentary ? `botoeira ${kind}: ${state}` : state;
   }
 
   return formatValue(element.type, element.value, element.phase ?? 0);

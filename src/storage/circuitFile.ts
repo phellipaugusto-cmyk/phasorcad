@@ -76,10 +76,14 @@ export function serializeCircuit(
                   ? { controlledBy: element.controlledBy }
                   : {}),
                 ...(element.normallyClosed ? { normallyClosed: true } : {}),
+                ...(element.momentary ? { momentary: true } : {}),
               }
             : {}),
           ...(element.type === "contactor" && element.contactor
-            ? { contactor: element.contactor }
+            ? {
+                contactor: element.contactor,
+                ...(element.energized ? { energized: true } : {}),
+              }
             : {}),
           ...(element.measured
             ? { measured: element.measured }
