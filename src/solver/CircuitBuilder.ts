@@ -1,4 +1,5 @@
 import { getMotorEquivalent } from "../core/motorModel";
+import { getLampResistance } from "../core/lampModel";
 import type { Circuit } from "../core/Circuit";
 
 import { Complex } from "../math/Complex";
@@ -74,6 +75,18 @@ export class CircuitBuilder {
                 2 * Math.PI * frequency * equivalent.inductance
               )
             );
+          }
+
+          break;
+
+        }
+
+        case "lamp": {
+
+          const resistance = getLampResistance(element);
+
+          if (resistance) {
+            impedances.push(new Complex(resistance, 0));
           }
 
           break;

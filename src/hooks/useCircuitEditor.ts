@@ -1,8 +1,12 @@
 import {
   MOTOR_DEFAULT_POWER_KW,
+  MOTOR_MAX_LOAD_FACTOR,
   getMotorParameters,
   type MotorParameters,
 } from "../core/motorModel";
+import { LAMP_DEFAULT_POWER_W } from "../core/lampModel";
+import type { MeasuredReadings } from "../core/CircuitElement";
+import { createBenchPreset } from "../data/benchPreset";
 import {
   useEffect,
   useState,
@@ -383,6 +387,7 @@ export function useCircuitEditor() {
       efficiency: clean(changes.efficiency, current.efficiency, 0.05, 1),
       powerFactor: clean(changes.powerFactor, current.powerFactor, 0.05, 1),
       ratedVoltage: clean(changes.ratedVoltage, current.ratedVoltage, 1, 100000),
+      loadFactor: clean(changes.loadFactor, current.loadFactor, 0, MOTOR_MAX_LOAD_FACTOR),
     };
 
     setElements((currentElements) =>
@@ -392,6 +397,106 @@ export function useCircuitEditor() {
           : element
       )
     );
+  }
+
+  /* Liga/desliga o interruptor selecionado. */
+  function toggleSelectedSwitch() {
+    if (selectedElement?.type !== "switch") {
+      return;
+    }
+
+    const elementId = selectedElement.id;
+
+    setElements((currentElements) =>
+      currentElements.map((element) =>
+        element.id === elementId
+          ? { ...element, closed: element.closed === false }
+          : element
+      )
+    );
+  }
+
+  /* Tensão nominal da lâmpada selecionada (V). */
+  function updateSelectedLampVoltage(volts: number) {
+    if (
+      selectedElement?.type !== "lamp" ||
+      !Number.isFinite(volts) ||
+      volts <= 0
+    ) {
+      return;
+    }
+
+    const elementId = selectedElement.id;
+
+    setElements((currentElements) =>
+      currentElements.map((element) =>
+        element.id === elementId
+          ? { ...element, lamp: { ratedVoltage: volts } }
+          : element
+      )
+    );
+  }
+
+  /*
+   * Leitura de bancada do componente selecionado. NaN (campo
+   * vazio) apaga a leitura daquela grandeza.
+   */
+  function updateSelectedMeasured(
+    quantity: keyof MeasuredReadings,
+    value: number
+  ) {
+    if (!selectedElement) {
+      return;
+    }
+
+    const elementId = selectedElement.id;
+
+    setElements((currentElements) =>
+      currentElements.map((element) => {
+        if (element.id !== elementId) {
+          return element;
+        }
+
+        const next: MeasuredReadings = { ...element.measured };
+
+        if (Number.isFinite(value)) {
+          next[quantity] = value;
+        } else {
+          delete next[quantity];
+        }
+
+        const rest = { ...element };
+        delete rest.measured;
+
+        return Object.keys(next).length > 0
+          ? { ...rest, measured: next }
+          : rest;
+      })
+    );
+  }
+
+  /* Abre o exemplo da bancada de Circuitos 2. */
+  function loadBenchPreset() {
+    const shouldOpen = window.confirm(
+      "Abrir o exemplo da bancada (fases A e B, lâmpadas, contator e motor)? O circuito atual será substituído."
+    );
+
+    if (!shouldOpen) {
+      return;
+    }
+
+    const preset = createBenchPreset();
+    const firstSource = preset.elements.find(
+      (element) => element.type === "source"
+    );
+
+    setElements(preset.elements);
+    setConnections(preset.connections);
+    setFrequency(preset.frequency);
+    setSourceVoltage(firstSource?.value ?? 0);
+    setSelectedElementId(null);
+    setSelectedConnectionId(null);
+    setEditingElementId(null);
   }
 
   /* Fase (°) da fonte selecionada; 0 quando não foi informada. */
@@ -442,6 +547,8 @@ export function useCircuitEditor() {
       capacitor: "C",
       inductor: "L",
       motor: "M",
+      lamp: "LP",
+      switch: "S",
     };
 
     const prefix =
@@ -621,6 +728,20 @@ export function useCircuitEditor() {
     );
   }
 
+  function addLamp() {
+    addElement(
+      "lamp",
+      LAMP_DEFAULT_POWER_W
+    );
+  }
+
+  function addSwitch() {
+    addElement(
+      "switch",
+      0
+    );
+  }
+
   function addInductor() {
     addElement(
       "inductor",
@@ -765,6 +886,9 @@ export function useCircuitEditor() {
       case "motor":
         return "kW";
 
+      case "lamp":
+        return "W";
+
       default:
         return "";
     }
@@ -813,6 +937,18 @@ export function useCircuitEditor() {
             0.001
           );
         break;
+
+      case "lamp":
+        convertedValue =
+          Math.max(
+            value,
+            0.1
+          );
+
+        break;
+
+      case "switch":
+        return;
 
       case "source":
         convertedValue =
@@ -885,6 +1021,12 @@ export function useCircuitEditor() {
     addCapacitor,
     addInductor,
     addMotor,
+    addLamp,
+    addSwitch,
+    loadBenchPreset,
+    toggleSelectedSwitch,
+    updateSelectedLampVoltage,
+    updateSelectedMeasured,
     removeSelectedElement,
     removeSelectedConnection,
     getDisplayValue,

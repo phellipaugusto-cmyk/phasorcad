@@ -14,7 +14,7 @@ import {
   getTerminalPosition,
 } from "../components/Canvas/circuitGeometry";
 import { routeConnections } from "../components/Canvas/wireRouter";
-import { formatValue } from "../components/Canvas/circuitValues";
+import { formatElementValue } from "../components/Canvas/circuitValues";
 import {
   buildPhasorEntries,
   type PhasorEntry,
@@ -58,6 +58,8 @@ const TYPE_NAMES: Record<string, string> = {
   capacitor: "Capacitor",
   inductor: "Indutor",
   motor: "Motor monofásico",
+  lamp: "Lâmpada incandescente",
+  switch: "Interruptor",
 };
 
 const COLORS: Record<string, string> = {
@@ -67,6 +69,8 @@ const COLORS: Record<string, string> = {
   capacitor: "#ea580c",
   inductor: "#9333ea",
   motor: "#b45309",
+  lamp: "#ca8a04",
+  switch: "#475569",
 };
 
 const STATE_TEXT: Record<string, string> = {
@@ -258,6 +262,25 @@ function drawSchematic(
         );
         break;
       }
+      case "lamp": {
+        /* Círculo com um X (lâmpada). */
+        seg(0, 26);
+        seg(54, 80);
+        pdf.circle(X(x0 + 40), Y(cy), 14 * scale, {
+          stroke: color,
+          width: st.width,
+        });
+        seg(30, 50, -10, 10);
+        seg(30, 50, 10, -10);
+        break;
+      }
+      case "switch": {
+        /* Lâmina: fechada na horizontal, aberta inclinada. */
+        seg(0, 24);
+        seg(56, 80);
+        seg(24, 56, 0, element.closed === false ? -16 : 0);
+        break;
+      }
       default: {
         /* Fontes: círculo com senoide (tensão) ou seta (corrente). */
         seg(0, 24);
@@ -303,7 +326,7 @@ function drawSchematic(
     });
 
     pdf.text(
-      formatValue(element.type, element.value, element.phase ?? 0),
+      formatElementValue(element),
       centerX,
       Y(cy + 34),
       { size: fontSize - 0.5, align: "center", color: "#374151" }
@@ -608,7 +631,7 @@ export async function buildCircuitReport(
       return [
         element.label,
         TYPE_NAMES[element.type] ?? element.type,
-        formatValue(element.type, element.value, element.phase ?? 0),
+        formatElementValue(element),
         v ? fmt(v.magnitude, 3) : "—",
         v ? fmt(v.angleDegrees, 2) : "—",
         c ? fmt(c.magnitude, 4) : "—",

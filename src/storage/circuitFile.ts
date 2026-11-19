@@ -66,6 +66,15 @@ export function serializeCircuit(
           ...(element.type === "motor" && element.motor
             ? { motor: element.motor }
             : {}),
+          ...(element.type === "lamp" && element.lamp
+            ? { lamp: element.lamp }
+            : {}),
+          ...(element.type === "switch"
+            ? { closed: element.closed !== false }
+            : {}),
+          ...(element.measured
+            ? { measured: element.measured }
+            : {}),
           x: element.x,
           y: element.y,
         })

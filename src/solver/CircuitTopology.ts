@@ -1,6 +1,10 @@
 import {
   isSourceType,
 } from "../core/CircuitElement";
+import {
+  getClosedSwitchConnections,
+  isOpenSwitch,
+} from "../core/switchModel";
 
 import type {
   CircuitElement,
@@ -155,6 +159,11 @@ export function isCircuitClosed(
        * outra não impede o circuito de fechar).
        */
       if (element.id === source.id) {
+        return;
+      }
+
+      /* Interruptor aberto não dá continuidade. */
+      if (isOpenSwitch(element)) {
         return;
       }
 
@@ -325,7 +334,11 @@ function hasWireOnlyPathBetweenSourceTerminals(
       Set<string>
     >();
 
-  connections.forEach(
+  /* Interruptor fechado conta como fio. */
+  [
+    ...connections,
+    ...getClosedSwitchConnections(elements),
+  ].forEach(
     (connection) => {
       if (
         !validTerminalIds.has(

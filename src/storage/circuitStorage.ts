@@ -1,4 +1,5 @@
 import { getMotorParameters } from "../core/motorModel";
+import { getLampRatedVoltage } from "../core/lampModel";
 import type {
   CircuitElement,
   CircuitElementType,
@@ -34,6 +35,8 @@ const validElementTypes:
     "capacitor",
     "inductor",
     "motor",
+    "lamp",
+    "switch",
   ];
 
 function isElementType(
@@ -45,6 +48,28 @@ function isElementType(
       value as CircuitElementType
     )
   );
+}
+
+/* Leituras de bancada: só números finitos; nada válido = ausente. */
+function sanitizeMeasured(
+  raw: unknown
+): CircuitElement["measured"] {
+  if (typeof raw !== "object" || raw === null) {
+    return undefined;
+  }
+
+  const source = raw as Record<string, unknown>;
+  const result: NonNullable<CircuitElement["measured"]> = {};
+
+  (["voltage", "current", "power"] as const).forEach((key) => {
+    const value = source[key];
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+      result[key] = value;
+    }
+  });
+
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 function sanitizeMotor(
@@ -117,6 +142,15 @@ export function migrateElement(
 
     ...(candidate.type === "motor"
       ? { motor: sanitizeMotor(candidate.motor) }
+      : {}),
+    ...(candidate.type === "lamp"
+      ? { lamp: { ratedVoltage: getLampRatedVoltage(candidate) } }
+      : {}),
+    ...(candidate.type === "switch"
+      ? { closed: candidate.closed !== false }
+      : {}),
+    ...(sanitizeMeasured(candidate.measured)
+      ? { measured: sanitizeMeasured(candidate.measured) }
       : {}),
 
     x:

@@ -21,7 +21,7 @@ import {
 } from "./circuitGeometry";
 
 import {
-  formatValue,
+  formatElementValue,
   getTerminal,
 } from "./circuitValues";
 
@@ -36,8 +36,10 @@ import {
  */
 function ElementSymbol({
   type,
+  closed = true,
 }: {
   type: CircuitElement["type"];
+  closed?: boolean;
 }) {
   const stroke = "#222222";
 
@@ -107,6 +109,41 @@ function ElementSymbol({
           />
         </>
       ) : null}
+      {type === "lamp" ? (
+        <>
+          <path
+            {...common}
+            d="M 0 40 L 26 40 M 54 40 L 80 40"
+          />
+          <circle
+            {...common}
+            cx={40}
+            cy={40}
+            r={14}
+          />
+          <path
+            {...common}
+            d="M 30 30 L 50 50 M 50 30 L 30 50"
+          />
+        </>
+      ) : null}
+
+      {type === "switch" ? (
+        <>
+          <path
+            {...common}
+            d="M 0 40 L 24 40 M 56 40 L 80 40"
+          />
+          <circle {...common} cx={24} cy={40} r={2.5} />
+          <circle {...common} cx={56} cy={40} r={2.5} />
+          <path
+            {...common}
+            stroke={closed ? stroke : "#dc2626"}
+            d={closed ? "M 24 40 L 56 40" : "M 24 40 L 53 24"}
+          />
+        </>
+      ) : null}
+
       {type === "source" ? (
         <>
           <path
@@ -411,6 +448,7 @@ export function CircuitComponent({
 
       <ElementSymbol
         type={element.type}
+        closed={element.closed !== false}
       />
 
       {flow ? (
@@ -488,11 +526,7 @@ export function CircuitComponent({
             pointerEvents: "none",
           }}
         >
-          {formatValue(
-            element.type,
-            element.value,
-            element.phase ?? 0
-          )}
+          {formatElementValue(element)}
         </div>
       )}
     </div>

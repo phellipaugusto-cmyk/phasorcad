@@ -1,4 +1,6 @@
 import { getMotorAdmittance } from "../core/motorModel";
+import { getLampAdmittance } from "../core/lampModel";
+import { getSwitchAdmittance } from "../core/switchModel";
 import type {
   CircuitGraph,
   CircuitGraphBranch,
@@ -93,6 +95,22 @@ function getPassiveAdmittance(
     }
     case "motor": {
       const admittance = getMotorAdmittance(element, frequency);
+
+      return admittance
+        ? createComplexValue(admittance.real, admittance.imaginary)
+        : null;
+    }
+
+    case "lamp": {
+      const admittance = getLampAdmittance(element);
+
+      return admittance
+        ? createComplexValue(admittance.real, admittance.imaginary)
+        : null;
+    }
+
+    case "switch": {
+      const admittance = getSwitchAdmittance(element);
 
       return admittance
         ? createComplexValue(admittance.real, admittance.imaginary)

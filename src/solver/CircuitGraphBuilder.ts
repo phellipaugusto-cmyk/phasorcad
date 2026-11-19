@@ -1,5 +1,6 @@
 import type { CircuitConnection } from "../core/CircuitConnection";
 import { isSourceType } from "../core/CircuitElement";
+import { getClosedSwitchConnections } from "../core/switchModel";
 import type { CircuitElement } from "../core/CircuitElement";
 import type {
   CircuitGraph,
@@ -243,7 +244,11 @@ export class CircuitGraphBuilder {
     const terminalIds = getAllTerminalIds(elements);
     const unionFind = createUnionFind(terminalIds);
 
-    connectWireTerminals(unionFind, connections);
+    /* Interruptor fechado = fio entre seus dois terminais. */
+    connectWireTerminals(unionFind, [
+      ...connections,
+      ...getClosedSwitchConnections(elements),
+    ]);
 
     const { nodes, terminalToNodeId } = createNodes(
       terminalIds,

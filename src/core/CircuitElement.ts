@@ -7,6 +7,8 @@ export type CircuitElementType =
   | "capacitor"
   | "inductor"
   | "motor"
+  | "lamp"
+  | "switch"
   | "source"
   | "currentSource";
 
@@ -21,6 +23,12 @@ export function isSourceType(
     type === "source" ||
     type === "currentSource"
   );
+}
+
+export interface MeasuredReadings {
+  voltage?: number;
+  current?: number;
+  power?: number;
 }
 
 export interface CircuitElement {
@@ -47,7 +55,33 @@ export interface CircuitElement {
     efficiency: number;
     powerFactor: number;
     ratedVoltage: number;
+    /*
+     * Carga no eixo como fração da nominal (0 = a vazio,
+     * 1 = nominal, 1,5 = 50 % de sobrecarga). Ausente = 1.
+     */
+    loadFactor?: number;
   };
+
+  /*
+   * Lâmpada incandescente (só para type "lamp"): `value` é a
+   * potência nominal em W, dada na tensão nominal abaixo.
+   */
+  lamp?: {
+    ratedVoltage: number;
+  };
+
+  /*
+   * Interruptor / contato de contator (só para type "switch"):
+   * true = fechado (conduz). Ausente = fechado.
+   */
+  closed?: boolean;
+
+  /*
+   * Leituras feitas na bancada (opcional), para comparar com o
+   * valor simulado: tensão (V), corrente (A) e potência ativa (W),
+   * todas eficazes.
+   */
+  measured?: MeasuredReadings;
 
   x: number;
 

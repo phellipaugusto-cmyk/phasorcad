@@ -180,3 +180,8 @@ html, body { overscroll-behavior: none; }
   .motor-field { font-size: 14px; }
   .motor-field input { width: 100px !important; }
 }
+.motor-load { flex-wrap: wrap; }
+.motor-load input[type="range"] { width: 100% !important; }
+.measure-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 8px; }
+.measure-table th, .measure-table td { border-bottom: 1px solid #e5e7eb; padding: 3px 4px; text-align: right; }
+.measure-table th:first-child, .measure-table td:first-child { text-align: left; }

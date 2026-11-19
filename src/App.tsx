@@ -11,6 +11,9 @@ import { Canvas } from "./components/Canvas/Canvas";
 import { ResultsPanel } from "./components/ResultsPanel/ResultsPanel";
 import { SolverComparisonPanel } from "./components/ResultsPanel/SolverComparisonPanel";
 import { MnaElectricalResultsPanel } from "./components/ResultsPanel/MnaElectricalResultsPanel";
+import { MeasurementComparisonPanel } from "./components/ResultsPanel/MeasurementComparisonPanel";
+import { LampFields } from "./components/Properties/LampFields";
+import { MeasuredFields } from "./components/Properties/MeasuredFields";
 import { PhasorDiagram } from "./components/PhasorDiagram/PhasorDiagram";
 import { FrequencySweepPanel } from "./components/FrequencySweep/FrequencySweepPanel";
 import { WaveformPanel } from "./components/Waveform/WaveformPanel";
@@ -49,6 +52,12 @@ function App() {
     addCapacitor,
     addInductor,
     addMotor,
+    addLamp,
+    addSwitch,
+    loadBenchPreset,
+    toggleSelectedSwitch,
+    updateSelectedLampVoltage,
+    updateSelectedMeasured,
     removeSelectedElement,
     removeSelectedConnection,
     getDisplayValue,
@@ -226,6 +235,20 @@ function App() {
               }
             </div>
 
+            {selectedElement.type === "switch" ? (
+              <div style={{ marginTop: "10px" }}>
+                <strong>Estado:</strong>{" "}
+                {selectedElement.closed === false ? "aberto (desligado)" : "fechado (ligado)"}
+                <br />
+                <button
+                  type="button"
+                  onClick={toggleSelectedSwitch}
+                  style={{ marginTop: "6px", cursor: "pointer" }}
+                >
+                  {selectedElement.closed === false ? "Ligar" : "Desligar"}
+                </button>
+              </div>
+            ) : (
             <div
               style={{
                 marginTop:
@@ -284,6 +307,13 @@ function App() {
               {" "}
               {getUnit()}
             </div>
+            )}
+            {selectedElement.type === "lamp" ? (
+              <LampFields
+                element={selectedElement}
+                onVoltageChange={updateSelectedLampVoltage}
+              />
+            ) : null}
             {selectedElement.type === "motor" ? (
               <MotorFields
                 element={selectedElement}
@@ -291,6 +321,10 @@ function App() {
                 onPowerChange={updateSelectedElement}
               />
             ) : null}
+            <MeasuredFields
+              element={selectedElement}
+              onChange={updateSelectedMeasured}
+            />
             {isSourceType(
               selectedElement.type
             ) ? (
@@ -484,6 +518,9 @@ function App() {
             addInductor
           }
           onAddMotor={addMotor}
+          onAddLamp={addLamp}
+          onAddSwitch={addSwitch}
+          onLoadBenchPreset={loadBenchPreset}
           onExportReport={exportReport}
           onOpenAnalysis={() => setView("analysis")}
         />
@@ -684,6 +721,11 @@ function App() {
           elements={elements}
           connections={connections}
           frequency={frequency}
+        />
+
+        <MeasurementComparisonPanel
+          elements={elements}
+          results={mnaElectricalResults}
         />
 
         <MnaElectricalResultsPanel

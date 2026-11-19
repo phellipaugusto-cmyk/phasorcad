@@ -14,7 +14,9 @@ export interface NodalBranchStamp {
     | "resistor"
     | "capacitor"
     | "inductor"
-    | "motor";
+    | "motor"
+    | "lamp"
+    | "switch";
   fromNodeId: string;
   toNodeId: string;
   admittance: ComplexValue;

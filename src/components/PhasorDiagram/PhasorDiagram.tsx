@@ -43,6 +43,8 @@ const COLORS: Record<
   capacitor: "#ea580c",
   inductor: "#9333ea",
   motor: "#b45309",
+  lamp: "#ca8a04",
+  switch: "#475569",
 };
 
 const UNITS: Record<

@@ -649,6 +649,19 @@ export function Canvas({
       element.id
     );
 
+    /* Duplo clique no interruptor liga/desliga em vez de editar. */
+    if (element.type === "switch") {
+      setElements(
+        elements.map((item) =>
+          item.id === element.id
+            ? { ...item, closed: item.closed === false }
+            : item
+        )
+      );
+
+      return;
+    }
+
     setEditingElementId(
       element.id
     );

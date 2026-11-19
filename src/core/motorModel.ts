@@ -12,6 +12,20 @@ import type { CircuitElement } from "./CircuitElement";
  *
  * Em outra frequência a reatância vira ωL (R fica fixo); em outra
  * tensão a potência escala com (V/Vn)².
+ *
+ * Carga no eixo (loadFactor = x, fração da potência nominal):
+ * o motor continua sendo uma impedância, mas calculada no ponto
+ * de operação x, com as curvas típicas de um motor de indução:
+ *
+ *   Perdas nominais   L  = P_el,n − P_mec,n
+ *   Perdas fixas      Lf = 50 % de L  (ferro + atrito/ventilação)
+ *   Perdas no cobre   Lc = 50 % de L  (crescem com x²)
+ *   P_el(x) = Lf + x·P_mec,n + x²·Lc
+ *   Q(x)    = Q_n · (0,6 + 0,4·x²)   (magnetização ≈ constante)
+ *
+ * Assim, a vazio (x = 0) o motor absorve só as perdas fixas e a
+ * maior parte do reativo: corrente alta para a potência e FP
+ * baixo. Em x = 1 o resultado é exatamente o de placa.
  */
 
 export interface MotorParameters {
@@ -21,13 +35,24 @@ export interface MotorParameters {
   powerFactor: number;
   /* Tensão nominal, em V (eficaz). */
   ratedVoltage: number;
+  /* Carga no eixo / carga nominal (0 a MOTOR_MAX_LOAD_FACTOR). */
+  loadFactor: number;
 }
 
 export const MOTOR_DEFAULTS: MotorParameters = {
   efficiency: 0.85,
   powerFactor: 0.85,
   ratedVoltage: 220,
+  loadFactor: 1,
 };
+
+export const MOTOR_MAX_LOAD_FACTOR = 1.5;
+
+/* Parte das perdas nominais que não depende da carga. */
+export const MOTOR_FIXED_LOSS_FRACTION = 0.5;
+
+/* Reativo a vazio como fração do reativo nominal. */
+export const MOTOR_NO_LOAD_REACTIVE_FRACTION = 0.6;
 
 /* Frequência em que a reatância equivalente é calculada. */
 export const MOTOR_NOMINAL_FREQUENCY = 60;
@@ -55,16 +80,27 @@ export function getMotorParameters(
       motor && motor.ratedVoltage > 0
         ? motor.ratedVoltage
         : MOTOR_DEFAULTS.ratedVoltage,
+    loadFactor:
+      motor &&
+      typeof motor.loadFactor === "number" &&
+      Number.isFinite(motor.loadFactor)
+        ? Math.min(MOTOR_MAX_LOAD_FACTOR, Math.max(0, motor.loadFactor))
+        : MOTOR_DEFAULTS.loadFactor,
   };
 }
 
 export interface MotorEquivalent {
-  /* Potências nominais. */
+  /* Potências no ponto de operação (na tensão nominal). */
   activePower: number;
   reactivePower: number;
   apparentPower: number;
-  /* Corrente nominal (A, eficaz). */
+  /* Corrente no ponto de operação, na tensão nominal (A, eficaz). */
   ratedCurrent: number;
+  /* Ponto de operação. */
+  loadFactor: number;
+  shaftPower: number;
+  efficiency: number;
+  powerFactor: number;
   /* Circuito série equivalente. */
   resistance: number;
   reactance: number;
@@ -79,14 +115,30 @@ export function getMotorEquivalent(
     return null;
   }
 
-  const { efficiency, powerFactor, ratedVoltage } =
+  const { efficiency, powerFactor, ratedVoltage, loadFactor } =
     getMotorParameters(element);
 
-  const activePower = (element.value * 1000) / efficiency;
-  const apparentPower = activePower / powerFactor;
-  const reactivePower = Math.sqrt(
-    Math.max(apparentPower ** 2 - activePower ** 2, 0)
-  );
+  const x = loadFactor;
+  const ratedShaftPower = element.value * 1000;
+  const ratedActivePower = ratedShaftPower / efficiency;
+  const ratedReactivePower =
+    ratedActivePower * Math.tan(Math.acos(powerFactor));
+
+  const losses = ratedActivePower - ratedShaftPower;
+  const fixedLosses = MOTOR_FIXED_LOSS_FRACTION * losses;
+  const copperLosses = losses - fixedLosses;
+
+  const shaftPower = x * ratedShaftPower;
+  const activePower = fixedLosses + shaftPower + x * x * copperLosses;
+  const reactivePower =
+    ratedReactivePower *
+    (MOTOR_NO_LOAD_REACTIVE_FRACTION +
+      (1 - MOTOR_NO_LOAD_REACTIVE_FRACTION) * x * x);
+  const apparentPower = Math.hypot(activePower, reactivePower);
+
+  if (!(apparentPower > 0)) {
+    return null;
+  }
 
   const resistance =
     (ratedVoltage ** 2 * activePower) / apparentPower ** 2;
@@ -99,6 +151,10 @@ export function getMotorEquivalent(
     reactivePower,
     apparentPower,
     ratedCurrent: apparentPower / ratedVoltage,
+    loadFactor: x,
+    shaftPower,
+    efficiency: shaftPower / activePower,
+    powerFactor: activePower / apparentPower,
     resistance,
     reactance,
     inductance: reactance / (2 * Math.PI * MOTOR_NOMINAL_FREQUENCY),

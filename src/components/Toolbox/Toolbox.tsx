@@ -10,6 +10,9 @@ interface ToolboxProps {
   onAddCapacitor: () => void;
   onAddInductor: () => void;
   onAddMotor: () => void;
+  onAddLamp: () => void;
+  onAddSwitch: () => void;
+  onLoadBenchPreset: () => void;
   /* Só no celular: abre a página de análise. */
   onExportReport?: () => void;
   onOpenAnalysis?: () => void;
@@ -69,6 +72,20 @@ const ICONS = {
       <path d="M11.5 19 V9 l4.5 6 l4.5 -6 V19" />
     </Icon>
   ),
+  lamp: (
+    <Icon>
+      <path d="M2 14 h7 M23 14 h7" />
+      <circle cx="16" cy="14" r="7" />
+      <path d="M11 9 l10 10 M21 9 l-10 10" />
+    </Icon>
+  ),
+  switch: (
+    <Icon>
+      <path d="M2 14 h7 M23 14 h7 M9 14 l13 -7" />
+      <circle cx="9" cy="14" r="1.6" />
+      <circle cx="23" cy="14" r="1.6" />
+    </Icon>
+  ),
   analysis: (
     <Icon>
       <path d="M3 24 V4 M3 24 H29 M7 18 l5 -6 l5 4 l9 -10" />
@@ -86,6 +103,9 @@ export function Toolbox({
   onAddCapacitor,
   onAddInductor,
   onAddMotor,
+  onAddLamp,
+  onAddSwitch,
+  onLoadBenchPreset,
   onExportReport,
   onOpenAnalysis,
 }: ToolboxProps) {
@@ -116,10 +136,20 @@ export function Toolbox({
         {part(ICONS.capacitor, "Capacitor", onAddCapacitor, "Adicionar um Capacitor")}
         {part(ICONS.inductor, "Indutor", onAddInductor, "Adicionar um Indutor")}
         {part(ICONS.motor, "Motor", onAddMotor, "Adicionar um Motor (carga por dados de placa)")}
+        {part(ICONS.lamp, "Lâmpada", onAddLamp, "Adicionar uma Lâmpada incandescente (resistiva)")}
+        {part(ICONS.switch, "Interruptor", onAddSwitch, "Adicionar um Interruptor (duplo clique liga/desliga)")}
         <span className="tb-sep tb-files" />
         <div className="tb-files tb-filegroup">
           <button type="button" className="tb-file" onClick={onNewCircuit}>
             Novo
+          </button>
+          <button
+            type="button"
+            className="tb-file"
+            onClick={onLoadBenchPreset}
+            title="Abrir o exemplo da bancada de Circuitos 2 (fases A e B, lâmpadas, contator e motor)."
+          >
+            Bancada
           </button>
           <button
             type="button"
