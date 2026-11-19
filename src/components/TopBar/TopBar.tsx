@@ -9,6 +9,7 @@ interface TopBarProps {
   frequency: number;
   setFrequency: (value: number) => void;
   onNewCircuit: () => void;
+  onLoadBenchPreset: () => void;
   onSaveCircuit: () => void;
   onOpenCircuit: (file: File) => void;
   onExportReport: () => void;
@@ -24,6 +25,7 @@ export function TopBar({
   frequency,
   setFrequency,
   onNewCircuit,
+  onLoadBenchPreset,
   onSaveCircuit,
   onOpenCircuit,
   onExportReport,
@@ -113,6 +115,15 @@ export function TopBar({
                 }}
               >
                 Novo circuito
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(null);
+                  onLoadBenchPreset();
+                }}
+              >
+                Exemplo: Bancada
               </button>
               <button
                 type="button"

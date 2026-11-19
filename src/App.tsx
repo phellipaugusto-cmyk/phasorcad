@@ -487,6 +487,7 @@ function App() {
         frequency={frequency}
         setFrequency={setFrequency}
         onNewCircuit={newCircuit}
+        onLoadBenchPreset={loadBenchPreset}
         onSaveCircuit={saveCircuitToFile}
         onOpenCircuit={openCircuitFile}
         onExportReport={exportReport}
