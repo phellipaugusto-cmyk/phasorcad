@@ -836,11 +836,8 @@ export async function buildCircuitReport(
     );
 
     /* ---------- 5. Fasores ---------- */
-    pdf.ensure(320);
-    pdf.heading("5. Diagramas fasoriais");
-
     const half = CONTENT_W / 2;
-    const size = Math.min(half - 8, 250);
+    const fullSize = Math.min(half - 8, 250);
 
     const legendRows = Math.max(
       voltages.filter((e) => e.magnitude > 1e-9).length,
@@ -848,9 +845,27 @@ export async function buildCircuitReport(
     );
     const legendHeight = legendRows * LEGEND_ROW + 6;
 
+    /*
+     * Aproveita o resto da página: se couberem diagramas de pelo
+     * menos 180 pt (com título e legenda), eles ficam aqui, um pouco
+     * menores; senão vão inteiros para a página seguinte.
+     */
+    const HEADING_HEIGHT = 40;
+    const room =
+      PAGE_H - MARGIN - 14 - pdf.cursor - HEADING_HEIGHT - legendHeight - 8;
+    const size = room >= 180 ? Math.min(fullSize, room) : fullSize;
+
+    if (room < 180) {
+      pdf.newPage();
+    }
+
+    pdf.heading("5. Diagramas fasoriais");
+
     pdf.ensure(size + legendHeight + 8);
-    drawPhasors(pdf, voltages, "V", "Tensões (V eficaz)", { x: MARGIN, top: pdf.cursor, size });
-    drawPhasors(pdf, currents, "A", "Correntes (A eficaz)", { x: MARGIN + half + 4, top: pdf.cursor, size });
+    /* Cada diagrama (com a legenda) centrado na sua metade. */
+    const inset = Math.max(0, (half - 4 - size) / 2);
+    drawPhasors(pdf, voltages, "V", "Tensões (V eficaz)", { x: MARGIN + inset, top: pdf.cursor, size });
+    drawPhasors(pdf, currents, "A", "Correntes (A eficaz)", { x: MARGIN + half + 4 + inset, top: pdf.cursor, size });
     pdf.cursor += size + legendHeight + 8;
 
     /* ---------- 6. Ondas ---------- */
@@ -871,7 +886,7 @@ export async function buildCircuitReport(
       pdf.ensure(170);
       drawPlot(
         pdf,
-        { x: MARGIN, top: pdf.cursor, w: CONTENT_W, h: 160 },
+        { x: MARGIN, top: pdf.cursor, w: CONTENT_W, h: 140 },
         {
           title: `v(t) e i(t) — ${mainSource.label}`,
           series: [
@@ -892,7 +907,7 @@ export async function buildCircuitReport(
           zeroLine: true,
         }
       );
-      pdf.cursor += 166;
+      pdf.cursor += 146;
 
       pdf.paragraph(
         `Pico de tensão ${fmt(wave.voltagePeak, 2)} V; pico de corrente ${fmt(wave.currentPeak, 3)} A. ` +
@@ -909,6 +924,7 @@ export async function buildCircuitReport(
       if (power && power.apparent > 1e-9) {
         const peak = Math.max(Math.abs(power.peakMax), Math.abs(power.peakMin)) || 1;
 
+        pdf.cursor += 10;
         pdf.ensure(160);
         drawPlot(
           pdf,
