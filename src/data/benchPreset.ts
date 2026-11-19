@@ -73,34 +73,34 @@ export function createBenchPreset(): {
     element("VA", "source", "Fase A", 125.8, 40, 40, {
       measured: { voltage: 125.8, power: 8 },
     }),
-    element("RT", "resistor", "Módulo touch", 3165, 360, 40),
-    element("B0", "switch", "B0 Desliga", 0, 160, 150, {
+    element("RT", "resistor", "Módulo touch", 3165, 400, 40),
+    element("B0", "switch", "B0 Desliga", 0, 220, 170, {
       momentary: true,
       normallyClosed: true,
     }),
-    element("B1", "switch", "B1 Liga", 0, 300, 150, { momentary: true }),
-    element("K1S", "switch", "Selo K1", 0, 300, 260, { controlledBy: "K1" }),
-    element("K1", "contactor", "Bobina K1", 8, 460, 150, {
+    element("B1", "switch", "B1 Liga", 0, 400, 170, { momentary: true }),
+    element("K1S", "switch", "Selo K1", 0, 400, 290, { controlledBy: "K1" }),
+    element("K1", "contactor", "Bobina K1", 8, 580, 170, {
       contactor: { ratedVoltage: 127, powerFactor: 0.35 },
       energized: true,
     }),
 
-    element("VB", "source", "Fase B", 129.1, 40, 480, {
+    element("VB", "source", "Fase B", 129.1, 40, 540, {
       phase: -120,
       measured: { voltage: 129.1, power: 167 },
     }),
-    element("S1", "switch", "Touch tecla 1", 0, 200, 400, { closed: true }),
-    element("LP1", "lamp", "Lâmpada 1", 60, 360, 400, {
+    element("S1", "switch", "Touch tecla 1", 0, 220, 420, { closed: true }),
+    element("LP1", "lamp", "Lâmpada 1", 60, 400, 420, {
       lamp: { ratedVoltage: 127 },
     }),
-    element("S2", "switch", "Touch tecla 2", 0, 200, 510, { closed: true }),
-    element("LP2", "lamp", "Lâmpada 2", 60, 360, 510, {
+    element("S2", "switch", "Touch tecla 2", 0, 220, 540, { closed: true }),
+    element("LP2", "lamp", "Lâmpada 2", 60, 400, 540, {
       lamp: { ratedVoltage: 127 },
     }),
-    element("K1A", "switch", "Contato K1", 0, 200, 620, {
+    element("K1A", "switch", "Contato K1", 0, 220, 660, {
       controlledBy: "K1",
     }),
-    element("M1", "motor", "Motor do ventilador", 0.045, 360, 620, {
+    element("M1", "motor", "Motor do ventilador", 0.045, 400, 660, {
       motor: {
         efficiency: 0.35,
         powerFactor: 0.95,

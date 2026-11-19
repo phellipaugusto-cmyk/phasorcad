@@ -131,6 +131,74 @@ const polar = (re: number, im: number) => ({
 /* Esquema do circuito                                                 */
 /* ------------------------------------------------------------------ */
 
+/*
+ * Largura livre (unidades do Canvas) para os rótulos de um
+ * componente: distância até o vizinho mais próximo cujos rótulos
+ * ficam na mesma faixa de altura, limitada a 120.
+ */
+function labelRoomFor(
+  element: CircuitElement,
+  elements: CircuitElement[]
+): number {
+  let room = 120;
+
+  elements.forEach((other) => {
+    if (other.id === element.id || Math.abs(other.y - element.y) >= 60) {
+      return;
+    }
+
+    const distance = Math.abs(other.x - element.x);
+
+    if (distance > 0) {
+      room = Math.min(room, distance - 6);
+    }
+  });
+
+  return Math.max(room, 60);
+}
+
+/*
+ * "B0:left, B0:right, K1:left" → "B0 (e, d), K1 (e)": cada
+ * componente uma vez, com os lados (esquerdo/direito) ligados ao nó.
+ */
+function compactTerminals(terminalIds: string[]): string {
+  const sides = new Map<string, string[]>();
+
+  terminalIds.forEach((terminalId) => {
+    const separator = terminalId.lastIndexOf(":");
+    const elementId =
+      separator >= 0 ? terminalId.slice(0, separator) : terminalId;
+    const side = terminalId.slice(separator + 1);
+    const list = sides.get(elementId) ?? [];
+    list.push(side === "left" ? "e" : side === "right" ? "d" : side);
+    sides.set(elementId, list);
+  });
+
+  return Array.from(sides.entries())
+    .map(([elementId, list]) => `${elementId} (${list.sort((a, b) => (a === "e" ? -1 : b === "e" ? 1 : a.localeCompare(b))).join(", ")})`)
+    .join(", ");
+}
+
+/* Altura da caixa do esquema seguindo a proporção do circuito. */
+function schematicHeightFor(elements: CircuitElement[]): number {
+  if (elements.length === 0) {
+    return 120;
+  }
+
+  const w =
+    Math.max(...elements.map((e) => e.x)) -
+    Math.min(...elements.map((e) => e.x)) +
+    COMPONENT_WIDTH +
+    80;
+  const h =
+    Math.max(...elements.map((e) => e.y)) -
+    Math.min(...elements.map((e) => e.y)) +
+    COMPONENT_HEIGHT +
+    60;
+
+  return Math.min(440, Math.max(140, (CONTENT_W * h) / w));
+}
+
 function drawSchematic(
   pdf: Pdf,
   input: ReportInput,
@@ -331,18 +399,26 @@ function drawSchematic(
     const fontSize = Math.max(7, 9.5 * Math.min(scale, 1.1));
     const centerX = X(x0 + 40);
 
-    pdf.text(element.label, centerX, Y(cy - 25), {
-      size: fontSize,
+    /*
+     * Rótulos cabem no espaço até o vizinho mais próximo na mesma
+     * linha (no máximo ~1,5 componente), para não se sobreporem.
+     */
+    const labelWidth = labelRoomFor(element, elements) * scale;
+    const name = pdf.fit(element.label, labelWidth, fontSize, true);
+    const value = pdf.fit(formatElementValue(element), labelWidth, fontSize - 0.5);
+
+    pdf.text(name.text, centerX, Y(cy - 25), {
+      size: name.size,
       bold: true,
       align: "center",
       color,
     });
 
     pdf.text(
-      formatElementValue(element),
+      value.text,
       centerX,
       Y(cy + 34),
-      { size: fontSize - 0.5, align: "center", color: "#374151" }
+      { size: value.size, align: "center", color: "#374151" }
     );
   });
 }
@@ -574,7 +650,7 @@ export async function buildCircuitReport(
   /* ---------- 1. Circuito ---------- */
   pdf.heading("1. Circuito analisado");
 
-  const schemaHeight = Math.min(250, Math.max(120, 90 + elements.length * 6));
+  const schemaHeight = schematicHeightFor(elements);
   pdf.ensure(schemaHeight + 6);
   drawSchematic(pdf, input, { x: MARGIN, top: pdf.cursor, w: CONTENT_W, h: schemaHeight });
   pdf.cursor += schemaHeight + 6;
@@ -656,15 +732,15 @@ export async function buildCircuitReport(
 
     pdf.table(
       [
-        { title: "ID", width: 30 },
-        { title: "Tipo", width: 92 },
-        { title: "Valor", width: 70, align: "right" },
-        { title: "|V| (V)", width: 55, align: "right" },
-        { title: "∠V (°)", width: 52, align: "right" },
-        { title: "|I| (A)", width: 55, align: "right" },
-        { title: "∠I (°)", width: 52, align: "right" },
-        { title: "P (W)", width: 55, align: "right" },
-        { title: "Q (var)", width: 55, align: "right" },
+        { title: "Componente", width: 80 },
+        { title: "Tipo", width: 82 },
+        { title: "Valor", width: 72, align: "right" },
+        { title: "|V| (V)", width: 48, align: "right" },
+        { title: "∠V (°)", width: 42, align: "right" },
+        { title: "|I| (A)", width: 48, align: "right" },
+        { title: "∠I (°)", width: 42, align: "right" },
+        { title: "P (W)", width: 50, align: "right" },
+        { title: "Q (var)", width: 50, align: "right" },
       ],
       rows
     );
@@ -686,7 +762,7 @@ export async function buildCircuitReport(
     pdf.table(
       [
         { title: "Nó", width: 40 },
-        { title: "Terminais", width: 215 },
+        { title: "Componentes (e = terminal esq., d = dir.)", width: 215 },
         { title: "|V| (V)", width: 80, align: "right" },
         { title: "∠V (°)", width: 70, align: "right" },
         { title: "Obs.", width: 110 },
@@ -696,7 +772,7 @@ export async function buildCircuitReport(
 
         return [
           node.nodeId,
-          (terminalsByNode.get(node.nodeId) ?? []).join(", "),
+          compactTerminals(terminalsByNode.get(node.nodeId) ?? []),
           fmt(p.magnitude, 3),
           fmt(p.magnitude < 1e-9 ? 0 : p.angle, 2),
           node.isReference ? "referência (GND)" : "",

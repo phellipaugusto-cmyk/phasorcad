@@ -151,6 +151,39 @@ export class Pdf {
     });
   }
 
+  /*
+   * Ajusta um texto a `maxWidth`: primeiro reduz a fonte (até
+   * `minSize`); se ainda não couber, corta com reticências.
+   */
+  fit(
+    text: string,
+    maxWidth: number,
+    size = 10,
+    bold = false,
+    minSize = Math.max(5.5, size * 0.75)
+  ): { text: string; size: number } {
+    if (maxWidth <= 0 || this.width(text, size, bold) <= maxWidth) {
+      return { text, size };
+    }
+
+    const shrunk = Math.max(
+      minSize,
+      (size * maxWidth) / this.width(text, size, bold)
+    );
+
+    if (this.width(text, shrunk, bold) <= maxWidth) {
+      return { text, size: shrunk };
+    }
+
+    let cut = text;
+
+    while (cut.length > 1 && this.width(`${cut}…`, shrunk, bold) > maxWidth) {
+      cut = cut.slice(0, -1);
+    }
+
+    return { text: `${cut.trimEnd()}…`, size: shrunk };
+  }
+
   /* Quebra o texto em linhas que cabem em `maxWidth`. */
   wrap(text: string, maxWidth: number, size = 10, bold = false) {
     const lines: string[] = [];
@@ -339,8 +372,10 @@ export class Pdf {
               ? x + column.width / 2
               : x + 4;
 
-        this.text(column.title, tx, this.cursor + rowH - 2, {
-          size,
+        const title = this.fit(column.title, column.width - 8, size, true);
+
+        this.text(title.text, tx, this.cursor + rowH - 2, {
+          size: title.size,
           bold: true,
           align: column.align ?? "left",
           color: "#1e3a8a",
@@ -375,8 +410,11 @@ export class Pdf {
               ? x + column.width / 2
               : x + 4;
 
-        this.text(row[i] ?? "", tx, this.cursor + rowH - 3, {
-          size,
+        /* Célula nunca invade a vizinha: reduz a fonte ou corta. */
+        const cell = this.fit(row[i] ?? "", column.width - 8, size);
+
+        this.text(cell.text, tx, this.cursor + rowH - 3, {
+          size: cell.size,
           align: column.align ?? "left",
         });
 
