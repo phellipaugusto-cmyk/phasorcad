@@ -88,19 +88,26 @@ html, body { overscroll-behavior: none; }
   .canvas-root { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .canvas-title, .canvas-toolbar .canvas-freq, .canvas-toolbar .canvas-center-btn { display: none !important; }
   .canvas-scroll { flex: 1; min-height: 0; border-top: 0; }
+  /*
+   * Zoom e animação numa faixa própria acima do desenho (antes
+   * flutuava sobre o circuito e cobria a parte de cima).
+   */
   .canvas-toolbar {
-    position: absolute; top: 8px; right: 8px; z-index: 5; width: auto !important;
-    padding: 4px 6px !important; margin: 0 !important; gap: 4px 8px !important;
-    border-radius: 22px; background: rgba(255, 255, 255, 0.92) !important;
-    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.2); border-color: #cbd5e1 !important;
-    flex-wrap: nowrap !important; font-size: 13px;
+    order: 1; position: static; flex: none; width: auto !important;
+    padding: 4px 8px !important; margin: 0 !important; gap: 4px 8px !important;
+    border: 0 !important; border-bottom: 1px solid #e2e8f0 !important; border-radius: 0;
+    background: #fff !important; box-shadow: none;
+    justify-content: center; flex-wrap: nowrap !important; font-size: 13px;
   }
+  .canvas-scroll { order: 2; }
   .canvas-toolbar button { min-height: 36px; min-width: 36px; padding: 0 8px; border-radius: 18px; }
   .canvas-toolbar label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  /* Dica/erro de conexão numa faixa abaixo do desenho, sem cobri-lo. */
   .circuit-status-bar {
-    position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 4;
-    margin: 0 !important; min-height: 0 !important; font-size: 12.5px; pointer-events: none;
-    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.15);
+    order: 3; position: static; flex: none;
+    margin: 0 !important; min-height: 0 !important; font-size: 12px; padding: 4px 10px !important;
+    border-radius: 0 !important; border-left: 0 !important; border-right: 0 !important;
+    box-shadow: none;
   }
   .circuit-status-bar button { pointer-events: auto; }
 
