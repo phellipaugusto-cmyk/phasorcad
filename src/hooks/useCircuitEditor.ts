@@ -1,4 +1,9 @@
 import {
+  MOTOR_DEFAULT_POWER_KW,
+  getMotorParameters,
+  type MotorParameters,
+} from "../core/motorModel";
+import {
   useEffect,
   useState,
 } from "react";
@@ -347,6 +352,48 @@ export function useCircuitEditor() {
     );
   }
 
+  /* Dados de placa do motor selecionado (com os valores padrão). */
+  function getSelectedMotor() {
+    return selectedElement?.type === "motor"
+      ? getMotorParameters(selectedElement)
+      : null;
+  }
+
+  function updateSelectedMotor(
+    changes: Partial<MotorParameters>
+  ) {
+    if (selectedElement?.type !== "motor") {
+      return;
+    }
+
+    const elementId = selectedElement.id;
+    const current = getMotorParameters(selectedElement);
+
+    const clean = (
+      value: number | undefined,
+      fallback: number,
+      min: number,
+      max: number
+    ) =>
+      value !== undefined && Number.isFinite(value)
+        ? Math.min(max, Math.max(min, value))
+        : fallback;
+
+    const next: MotorParameters = {
+      efficiency: clean(changes.efficiency, current.efficiency, 0.05, 1),
+      powerFactor: clean(changes.powerFactor, current.powerFactor, 0.05, 1),
+      ratedVoltage: clean(changes.ratedVoltage, current.ratedVoltage, 1, 100000),
+    };
+
+    setElements((currentElements) =>
+      currentElements.map((element) =>
+        element.id === elementId
+          ? { ...element, motor: next }
+          : element
+      )
+    );
+  }
+
   /* Fase (°) da fonte selecionada; 0 quando não foi informada. */
   function getSelectedPhase(): number {
     return selectedElement?.phase ?? 0;
@@ -394,6 +441,7 @@ export function useCircuitEditor() {
       resistor: "R",
       capacitor: "C",
       inductor: "L",
+      motor: "M",
     };
 
     const prefix =
@@ -566,6 +614,13 @@ export function useCircuitEditor() {
     );
   }
 
+  function addMotor() {
+    addElement(
+      "motor",
+      MOTOR_DEFAULT_POWER_KW
+    );
+  }
+
   function addInductor() {
     addElement(
       "inductor",
@@ -707,6 +762,8 @@ export function useCircuitEditor() {
 
       case "inductor":
         return "mH";
+      case "motor":
+        return "kW";
 
       default:
         return "";
@@ -747,6 +804,13 @@ export function useCircuitEditor() {
           Math.max(
             value,
             0.000001
+          );
+        break;
+      case "motor":
+        convertedValue =
+          Math.max(
+            value,
+            0.001
           );
         break;
 
@@ -820,6 +884,7 @@ export function useCircuitEditor() {
     addResistor,
     addCapacitor,
     addInductor,
+    addMotor,
     removeSelectedElement,
     removeSelectedConnection,
     getDisplayValue,
@@ -827,5 +892,7 @@ export function useCircuitEditor() {
     updateSelectedElement,
     getSelectedPhase,
     updateSelectedPhase,
+    getSelectedMotor,
+    updateSelectedMotor,
   };
 }

@@ -9,6 +9,7 @@ interface ToolboxProps {
   onAddResistor: () => void;
   onAddCapacitor: () => void;
   onAddInductor: () => void;
+  onAddMotor: () => void;
   /* Só no celular: abre a página de análise. */
   onExportReport?: () => void;
   onOpenAnalysis?: () => void;
@@ -61,6 +62,13 @@ const ICONS = {
       <path d="M2 17 h3 a3.5 3.5 0 0 1 7 0 a3.5 3.5 0 0 1 7 0 a3.5 3.5 0 0 1 7 0 h3" />
     </Icon>
   ),
+  motor: (
+    <Icon>
+      <path d="M2 14 h5 M25 14 h5" />
+      <circle cx="16" cy="14" r="9" />
+      <path d="M11.5 19 V9 l4.5 6 l4.5 -6 V19" />
+    </Icon>
+  ),
   analysis: (
     <Icon>
       <path d="M3 24 V4 M3 24 H29 M7 18 l5 -6 l5 4 l9 -10" />
@@ -77,6 +85,7 @@ export function Toolbox({
   onAddResistor,
   onAddCapacitor,
   onAddInductor,
+  onAddMotor,
   onExportReport,
   onOpenAnalysis,
 }: ToolboxProps) {
@@ -106,6 +115,7 @@ export function Toolbox({
         {part(ICONS.resistor, "Resistor", onAddResistor, "Adicionar um Resistor")}
         {part(ICONS.capacitor, "Capacitor", onAddCapacitor, "Adicionar um Capacitor")}
         {part(ICONS.inductor, "Indutor", onAddInductor, "Adicionar um Indutor")}
+        {part(ICONS.motor, "Motor", onAddMotor, "Adicionar um Motor (carga por dados de placa)")}
         <span className="tb-sep tb-files" />
         <div className="tb-files tb-filegroup">
           <button type="button" className="tb-file" onClick={onNewCircuit}>

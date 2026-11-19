@@ -1,3 +1,4 @@
+import { getMotorAdmittance } from "../core/motorModel";
 import type {
   CircuitGraph,
   CircuitGraphBranch,
@@ -89,6 +90,13 @@ function getPassiveAdmittance(
             element.value
           )
       );
+    }
+    case "motor": {
+      const admittance = getMotorAdmittance(element, frequency);
+
+      return admittance
+        ? createComplexValue(admittance.real, admittance.imaginary)
+        : null;
     }
 
     case "source":

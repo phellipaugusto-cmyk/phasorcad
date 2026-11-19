@@ -89,6 +89,24 @@ function ElementSymbol({
         />
       ) : null}
 
+      {type === "motor" ? (
+        <>
+          <path
+            {...common}
+            d="M 0 40 L 22 40 M 58 40 L 80 40"
+          />
+          <circle
+            {...common}
+            cx={40}
+            cy={40}
+            r={18}
+          />
+          <path
+            {...common}
+            d="M 32 49 L 32 31 L 40 42 L 48 31 L 48 49"
+          />
+        </>
+      ) : null}
       {type === "source" ? (
         <>
           <path

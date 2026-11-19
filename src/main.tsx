@@ -64,5 +64,6 @@ if (import.meta.env.DEV) {
     import('./test/TestArbitraryTopologies'),
     import('./test/TestMultipleSources'),
     import('./test/TestReport'),
+    import('./test/TestMotor'),
   ])
 }

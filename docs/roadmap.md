@@ -180,3 +180,9 @@ Falta:
 - Mostrar os valores no formato de engenharia (k, m, µ) nas caixas de edição
 
 - [x] Relatório em PDF da análise (esquema, resultados, tabelas, fasores, ondas, varredura) — `src/report/`, gerado no navegador com pdf-lib (`npm install` instala a dependência).
+
+## Motor monofásico (concluído)
+- Novo componente "Motor": potência no eixo (kW, também em cv), rendimento, fator de potência e tensão nominal.
+- Modelo de impedância constante: R + jωL calculados dos dados de placa; a potência varia com (V/Vn)².
+- Salvo nos arquivos de circuito, desenhado no relatório PDF. Teste: `src/test/TestMotor.ts`.
+- Futuro: motor trifásico, partida (corrente de rotor bloqueado), curva torque×velocidade.

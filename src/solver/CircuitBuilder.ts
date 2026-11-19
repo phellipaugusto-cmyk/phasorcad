@@ -1,3 +1,4 @@
+import { getMotorEquivalent } from "../core/motorModel";
 import type { Circuit } from "../core/Circuit";
 
 import { Complex } from "../math/Complex";
@@ -57,6 +58,23 @@ export class CircuitBuilder {
               element.value
             )
           );
+
+          break;
+
+        }
+
+        case "motor": {
+
+          const equivalent = getMotorEquivalent(element);
+
+          if (equivalent) {
+            impedances.push(
+              new Complex(
+                equivalent.resistance,
+                2 * Math.PI * frequency * equivalent.inductance
+              )
+            );
+          }
 
           break;
 

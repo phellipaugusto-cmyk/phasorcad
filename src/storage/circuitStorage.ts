@@ -1,3 +1,4 @@
+import { getMotorParameters } from "../core/motorModel";
 import type {
   CircuitElement,
   CircuitElementType,
@@ -32,6 +33,7 @@ const validElementTypes:
     "resistor",
     "capacitor",
     "inductor",
+    "motor",
   ];
 
 function isElementType(
@@ -43,6 +45,16 @@ function isElementType(
       value as CircuitElementType
     )
   );
+}
+
+function sanitizeMotor(
+  raw: unknown
+): NonNullable<CircuitElement["motor"]> {
+  const motor = getMotorParameters({
+    motor: raw as CircuitElement["motor"],
+  });
+
+  return motor;
 }
 
 export function migrateElement(
@@ -101,6 +113,10 @@ export function migrateElement(
     Number.isFinite(candidate.phase) &&
     candidate.phase !== 0
       ? { phase: candidate.phase }
+      : {}),
+
+    ...(candidate.type === "motor"
+      ? { motor: sanitizeMotor(candidate.motor) }
       : {}),
 
     x:

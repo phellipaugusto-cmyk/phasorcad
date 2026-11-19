@@ -6,6 +6,7 @@ export type CircuitElementType =
   | "resistor"
   | "capacitor"
   | "inductor"
+  | "motor"
   | "source"
   | "currentSource";
 
@@ -36,6 +37,17 @@ export interface CircuitElement {
    * ausente significa 0° (a referência de fase do circuito).
    */
   phase?: number;
+
+  /*
+   * Dados de placa do motor (só para type "motor"). `value` é a
+   * potência mecânica no eixo, em kW. Campos ausentes usam
+   * MOTOR_DEFAULTS.
+   */
+  motor?: {
+    efficiency: number;
+    powerFactor: number;
+    ratedVoltage: number;
+  };
 
   x: number;
 

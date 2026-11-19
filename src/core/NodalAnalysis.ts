@@ -13,7 +13,8 @@ export interface NodalBranchStamp {
   elementType:
     | "resistor"
     | "capacitor"
-    | "inductor";
+    | "inductor"
+    | "motor";
   fromNodeId: string;
   toNodeId: string;
   admittance: ComplexValue;

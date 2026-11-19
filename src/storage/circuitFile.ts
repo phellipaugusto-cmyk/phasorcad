@@ -63,6 +63,9 @@ export function serializeCircuit(
           ...(element.phase
             ? { phase: element.phase }
             : {}),
+          ...(element.type === "motor" && element.motor
+            ? { motor: element.motor }
+            : {}),
           x: element.x,
           y: element.y,
         })

@@ -42,6 +42,7 @@ const COLORS: Record<
   resistor: "#2563eb",
   capacitor: "#ea580c",
   inductor: "#9333ea",
+  motor: "#b45309",
 };
 
 const UNITS: Record<

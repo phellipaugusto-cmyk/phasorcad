@@ -22,6 +22,8 @@ export function formatValue(
       return `${value * 1_000_000} µF`;
     case "inductor":
       return `${value * 1000} mH`;
+    case "motor":
+      return `${Number(value.toPrecision(4))} kW`;
     case "source":
       return `${value} V${angle}`;
     case "currentSource":
@@ -53,6 +55,8 @@ export function convertEditValue(
       return Math.max(value, 0.000001) / 1000;
     case "resistor":
       return Math.max(value, 0.000001);
+    case "motor":
+      return Math.max(value, 0.001);
     case "source":
     case "currentSource":
       return Math.max(value, 0);
@@ -69,6 +73,8 @@ export function getSymbol(type: CircuitElement["type"]): string {
       return "| |";
     case "inductor":
       return "∿∿∿";
+    case "motor":
+      return "(M)";
     case "source":
       return "(~)";
     case "currentSource":

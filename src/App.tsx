@@ -5,6 +5,7 @@ import { useCircuitEditor } from "./hooks/useCircuitEditor";
 import { TopBar } from "./components/TopBar/TopBar";
 import { ResultsStrip } from "./components/ResultsPanel/ResultsStrip";
 import { WireInfoPanel } from "./components/ResultsPanel/WireInfoPanel";
+import { MotorFields } from "./components/Properties/MotorFields";
 import { Toolbox } from "./components/Toolbox/Toolbox";
 import { Canvas } from "./components/Canvas/Canvas";
 import { ResultsPanel } from "./components/ResultsPanel/ResultsPanel";
@@ -47,6 +48,7 @@ function App() {
     addResistor,
     addCapacitor,
     addInductor,
+    addMotor,
     removeSelectedElement,
     removeSelectedConnection,
     getDisplayValue,
@@ -54,6 +56,7 @@ function App() {
     updateSelectedElement,
     getSelectedPhase,
     updateSelectedPhase,
+    updateSelectedMotor,
   } = useCircuitEditor();
 
   const {
@@ -281,6 +284,13 @@ function App() {
               {" "}
               {getUnit()}
             </div>
+            {selectedElement.type === "motor" ? (
+              <MotorFields
+                element={selectedElement}
+                onChange={updateSelectedMotor}
+                onPowerChange={updateSelectedElement}
+              />
+            ) : null}
             {isSourceType(
               selectedElement.type
             ) ? (
@@ -473,6 +483,7 @@ function App() {
           onAddInductor={
             addInductor
           }
+          onAddMotor={addMotor}
           onExportReport={exportReport}
           onOpenAnalysis={() => setView("analysis")}
         />

@@ -1,32 +1,75 @@
-# PhasorCAD
+# React + TypeScript + Vite
 
-Editor de circuitos CA com análise fasorial, direto no navegador (celular, tablet e computador).
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-**Acesse:** https://phellipaugusto-cmyk.github.io/phasorcad/
+Currently, two official plugins are available:
 
-## O que faz
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
 
-- Monte circuitos com fonte de tensão CA, fonte de corrente, resistor, capacitor e indutor, ligando terminais com fios.
-- Várias fontes, cada uma com fase própria (padrão 0°).
-- Resultados: Zeq, corrente, P, Q, S e fator de potência; tensões e correntes por componente e por nó.
-- Diagrama fasorial (origem comum e soma ponta a ponta), ondas v(t), i(t) e p(t), resposta em frequência.
-- Animação (câmera lenta): fios coloridos pela tensão, pontos de corrente nos fios e componentes, fasores girando e cursor nas ondas.
-- Relatório em PDF da análise.
-- Salvar e abrir circuitos em arquivo `.json`; funciona offline como app instalável (PWA).
+## React Compiler
 
-## Rodar no computador
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+
+## Expanding the ESLint configuration
+
+If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+
+```js
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+
+      // Remove tseslint.configs.recommended and replace with this
+      tseslint.configs.recommendedTypeChecked,
+      // Alternatively, use this for stricter rules
+      tseslint.configs.strictTypeChecked,
+      // Optionally, add this for stylistic rules
+      tseslint.configs.stylisticTypeChecked,
+
+      // Other configs...
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
 
 ```
-npm install
-npm run dev
+
+You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+
+```js
+// eslint.config.js
+import reactX from 'eslint-plugin-react-x'
+import reactDom from 'eslint-plugin-react-dom'
+
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+      // Enable lint rules for React
+      reactX.configs['recommended-typescript'],
+      // Enable lint rules for React DOM
+      reactDom.configs.recommended,
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
+
 ```
-
-No Windows/PowerShell, use `npm.cmd` no lugar de `npm`.
-
-Para gerar um arquivo único (`dist-single/PhasorCAD.html`): `npm run build` e depois `npm run single`.
-
-Documentação em `docs/`.
-
-## Licença
-
-MIT.

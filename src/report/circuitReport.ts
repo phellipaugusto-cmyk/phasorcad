@@ -57,6 +57,7 @@ const TYPE_NAMES: Record<string, string> = {
   resistor: "Resistor",
   capacitor: "Capacitor",
   inductor: "Indutor",
+  motor: "Motor monofásico",
 };
 
 const COLORS: Record<string, string> = {
@@ -65,6 +66,7 @@ const COLORS: Record<string, string> = {
   resistor: "#2563eb",
   capacitor: "#ea580c",
   inductor: "#9333ea",
+  motor: "#b45309",
 };
 
 const STATE_TEXT: Record<string, string> = {
@@ -239,6 +241,21 @@ function drawSchematic(
 
         pdf.polyline(pts, st);
         seg(66, 80);
+        break;
+      }
+      case "motor": {
+        seg(0, 22);
+        seg(58, 80);
+        pdf.circle(X(x0 + 40), Y(cy), 18 * scale, {
+          stroke: color,
+          width: st.width,
+        });
+        pdf.polyline(
+          ([[32, 9], [32, -9], [40, 2], [48, -9], [48, 9]] as [number, number][]).map(
+            ([u, v]) => [X(x0 + u), Y(cy + v)] as [number, number]
+          ),
+          st
+        );
         break;
       }
       default: {

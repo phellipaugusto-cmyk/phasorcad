@@ -171,3 +171,12 @@ html, body { overscroll-behavior: none; }
 @media (max-width: 900px) {
   .side-report { width: 100%; min-height: 48px; font-weight: 600; background: #eff6ff; border: 1px solid #93c5fd; border-radius: 12px; color: #1d4ed8; }
 }
+
+.motor-fields { margin-top: 10px; text-align: left; }
+.motor-field { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0; font-size: 13.5px; }
+.motor-field input { width: 90px; }
+.motor-summary { margin-top: 6px; font-size: 12px; color: #4b5563; line-height: 1.45; }
+@media (max-width: 900px) {
+  .motor-field { font-size: 14px; }
+  .motor-field input { width: 100px !important; }
+}
