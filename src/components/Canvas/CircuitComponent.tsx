@@ -485,13 +485,21 @@ export function CircuitComponent({
         <FlowDots flow={flow} />
       ) : null}
 
+      {/*
+        * Rótulos numa linha só, centrados e podendo passar um pouco
+        * da largura do símbolo (antes quebravam em duas linhas e
+        * caíam em cima do desenho).
+        */}
       <div
         style={{
           position: "absolute",
           top: 2,
-          left: 0,
-          right: 0,
-          fontSize: "13px",
+          left: -50,
+          right: -50,
+          fontSize: "12px",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
           pointerEvents: "none",
         }}
       >
@@ -550,9 +558,13 @@ export function CircuitComponent({
           style={{
             position: "absolute",
             bottom: 4,
-            left: 0,
-            right: 0,
-            fontSize: "13px",
+            left: -50,
+            right: -50,
+            fontSize: "11.5px",
+            color: "#374151",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
             pointerEvents: "none",
           }}
         >

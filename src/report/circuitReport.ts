@@ -52,13 +52,13 @@ export interface ReportInput {
 }
 
 const TYPE_NAMES: Record<string, string> = {
-  source: "Fonte de tensão CA",
-  currentSource: "Fonte de corrente CA",
+  source: "Fonte de tensão",
+  currentSource: "Fonte de corrente",
   resistor: "Resistor",
   capacitor: "Capacitor",
   inductor: "Indutor",
   motor: "Motor monofásico",
-  lamp: "Lâmpada incandescente",
+  lamp: "Lâmpada",
   switch: "Interruptor",
   contactor: "Bobina de contator",
 };
@@ -130,6 +130,17 @@ const polar = (re: number, im: number) => ({
 /* ------------------------------------------------------------------ */
 /* Esquema do circuito                                                 */
 /* ------------------------------------------------------------------ */
+
+/*
+ * Valor do componente com vírgula decimal e sinal de menos
+ * tipográfico, como no resto do relatório ("129.1 V ∠-120°" →
+ * "129,1 V ∠−120°").
+ */
+function reportValue(element: CircuitElement): string {
+  return formatElementValue(element)
+    .replace(/(\d)\.(\d)/g, "$1,$2")
+    .replace(/∠-/g, "∠−");
+}
 
 /*
  * Largura livre (unidades do Canvas) para os rótulos de um
@@ -405,7 +416,7 @@ function drawSchematic(
      */
     const labelWidth = labelRoomFor(element, elements) * scale;
     const name = pdf.fit(element.label, labelWidth, fontSize, true);
-    const value = pdf.fit(formatElementValue(element), labelWidth, fontSize - 0.5);
+    const value = pdf.fit(reportValue(element), labelWidth, fontSize - 0.5);
 
     pdf.text(name.text, centerX, Y(cy - 25), {
       size: name.size,
@@ -457,28 +468,72 @@ function drawPhasors(
   pdf.text("Re", cx + radius + 10, cy - 3, { size: 7.5, color: "#6b7280", align: "right" });
   pdf.text("Im", cx + 4, cy - radius - 8, { size: 7.5, color: "#6b7280" });
 
-  const placed: { x: number; y: number }[] = [];
+  /*
+   * Na ponta de cada seta vai só um número; o nome e o valor ficam
+   * na legenda abaixo do diagrama. Assim nomes longos e fasores
+   * quase na mesma direção não se sobrepõem.
+   */
+  const placed: { x: number; y: number; w: number; h: number }[] = [
+    /* Rótulos dos eixos. */
+    { x: cx + radius - 8, y: cy - 10, w: 24, h: 10 },
+    { x: cx, y: cy - radius - 16, w: 20, h: 10 },
+  ];
+  const overlaps = (x: number, y: number, w: number, h: number) =>
+    placed.some(
+      (p) =>
+        Math.abs(p.x + p.w / 2 - (x + w / 2)) < (p.w + w) / 2 + 1 &&
+        Math.abs(p.y + p.h / 2 - (y + h / 2)) < (p.h + h) / 2 + 1
+    );
 
-  active.forEach((entry) => {
+  active.forEach((entry, index) => {
     const tipX = cx + entry.real * unitLen;
     const tipY = cy - entry.imaginary * unitLen;
     const color = COLORS[entry.type] ?? "#111827";
 
     pdf.arrow(cx, cy, tipX, tipY, { color, width: 1.5 });
 
+    const tag = String(index + 1);
+    const w = pdf.width(tag, 8, true) + 4;
+    const h = 10;
     const length = Math.hypot(tipX - cx, tipY - cy) || 1;
-    let lx = tipX + ((tipX - cx) / length) * 13;
-    let ly = tipY + ((tipY - cy) / length) * 10 + 3;
+    const ux = (tipX - cx) / length;
+    const uy = (tipY - cy) / length;
 
-    while (placed.some((p) => Math.abs(p.x - lx) < 24 && Math.abs(p.y - ly) < 10)) {
-      ly -= 10;
+    /* Tenta ao longo da seta e, se ocupado, para os lados. */
+    let x = tipX + ux * 9 - w / 2;
+    let y = tipY + uy * 9 - h / 2;
+
+    for (let step = 1; step < 40 && overlaps(x, y, w, h); step++) {
+      const side = step % 2 === 0 ? 1 : -1;
+      const amount = Math.ceil(step / 2) * 9;
+      x = tipX + ux * 9 - w / 2 + -uy * side * amount;
+      y = tipY + uy * 9 - h / 2 + ux * side * amount;
     }
 
-    placed.push({ x: lx, y: ly });
-    lx = Math.min(box.x + box.size - 10, Math.max(box.x + 10, lx));
-    pdf.text(entry.label, lx, ly, { size: 8.5, bold: true, color, align: "center" });
+    x = Math.min(box.x + box.size - w, Math.max(box.x, x));
+    placed.push({ x, y, w, h });
+    pdf.text(tag, x + w / 2, y + h - 2, { size: 8, bold: true, color, align: "center" });
+  });
+
+  /* Legenda: número, nome, módulo e ângulo. */
+  let legendY = box.top + box.size + 4;
+
+  active.forEach((entry, index) => {
+    const color = COLORS[entry.type] ?? "#111827";
+    const value = `${fmt(entry.magnitude, entry.magnitude >= 10 ? 1 : 3)} ${unit} ∠${fmt(entry.angleDegrees, 1)}°`;
+    const tag = `${index + 1}`;
+    const valueWidth = pdf.width(value, 7.5);
+    const nameRoom = box.size - 16 - valueWidth - 8;
+    const name = pdf.fit(entry.label, nameRoom, 7.5, true);
+
+    pdf.text(tag, box.x + 6, legendY, { size: 7.5, bold: true, color, align: "center" });
+    pdf.text(name.text, box.x + 14, legendY, { size: name.size, bold: true, color });
+    pdf.text(value, box.x + box.size, legendY, { size: 7.5, color: "#374151", align: "right" });
+    legendY += LEGEND_ROW;
   });
 }
+
+const LEGEND_ROW = 10.5;
 
 /* ------------------------------------------------------------------ */
 /* Gráficos de linhas                                                  */
@@ -720,7 +775,7 @@ export async function buildCircuitReport(
       return [
         element.label,
         TYPE_NAMES[element.type] ?? element.type,
-        formatElementValue(element),
+        reportValue(element),
         v ? fmt(v.magnitude, 3) : "—",
         v ? fmt(v.angleDegrees, 2) : "—",
         c ? fmt(c.magnitude, 4) : "—",
@@ -732,12 +787,12 @@ export async function buildCircuitReport(
 
     pdf.table(
       [
-        { title: "Componente", width: 80 },
-        { title: "Tipo", width: 82 },
-        { title: "Valor", width: 72, align: "right" },
-        { title: "|V| (V)", width: 48, align: "right" },
-        { title: "∠V (°)", width: 42, align: "right" },
-        { title: "|I| (A)", width: 48, align: "right" },
+        { title: "Componente", width: 78 },
+        { title: "Tipo", width: 80 },
+        { title: "Valor", width: 80, align: "right" },
+        { title: "|V| (V)", width: 46, align: "right" },
+        { title: "∠V (°)", width: 40, align: "right" },
+        { title: "|I| (A)", width: 46, align: "right" },
         { title: "∠I (°)", width: 42, align: "right" },
         { title: "P (W)", width: 50, align: "right" },
         { title: "Q (var)", width: 50, align: "right" },
@@ -781,16 +836,22 @@ export async function buildCircuitReport(
     );
 
     /* ---------- 5. Fasores ---------- */
-    pdf.ensure(290);
+    pdf.ensure(320);
     pdf.heading("5. Diagramas fasoriais");
 
     const half = CONTENT_W / 2;
     const size = Math.min(half - 8, 250);
 
-    pdf.ensure(size + 8);
+    const legendRows = Math.max(
+      voltages.filter((e) => e.magnitude > 1e-9).length,
+      currents.filter((e) => e.magnitude > 1e-9).length
+    );
+    const legendHeight = legendRows * LEGEND_ROW + 6;
+
+    pdf.ensure(size + legendHeight + 8);
     drawPhasors(pdf, voltages, "V", "Tensões (V eficaz)", { x: MARGIN, top: pdf.cursor, size });
     drawPhasors(pdf, currents, "A", "Correntes (A eficaz)", { x: MARGIN + half + 4, top: pdf.cursor, size });
-    pdf.cursor += size + 8;
+    pdf.cursor += size + legendHeight + 8;
 
     /* ---------- 6. Ondas ---------- */
     const mainSource = sources[0];
