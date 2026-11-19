@@ -70,7 +70,16 @@ export function serializeCircuit(
             ? { lamp: element.lamp }
             : {}),
           ...(element.type === "switch"
-            ? { closed: element.closed !== false }
+            ? {
+                closed: element.closed !== false,
+                ...(element.controlledBy
+                  ? { controlledBy: element.controlledBy }
+                  : {}),
+                ...(element.normallyClosed ? { normallyClosed: true } : {}),
+              }
+            : {}),
+          ...(element.type === "contactor" && element.contactor
+            ? { contactor: element.contactor }
             : {}),
           ...(element.measured
             ? { measured: element.measured }

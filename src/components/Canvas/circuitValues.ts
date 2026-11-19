@@ -7,7 +7,11 @@ import type {
 /* Texto do valor de um componente, com o estado do interruptor. */
 export function formatElementValue(element: CircuitElement): string {
   if (element.type === "switch") {
-    return element.closed === false ? "aberto" : "fechado";
+    const state = element.closed === false ? "aberto" : "fechado";
+
+    return element.controlledBy
+      ? `${element.normallyClosed ? "NF" : "NA"} ${element.controlledBy}: ${state}`
+      : state;
   }
 
   return formatValue(element.type, element.value, element.phase ?? 0);
@@ -37,6 +41,8 @@ export function formatValue(
       return `${Number(value.toPrecision(4))} W`;
     case "switch":
       return "";
+    case "contactor":
+      return `${Number(value.toPrecision(4))} VA`;
     case "source":
       return `${value} V${angle}`;
     case "currentSource":
@@ -74,6 +80,8 @@ export function convertEditValue(
       return Math.max(value, 0.1);
     case "switch":
       return 0;
+    case "contactor":
+      return Math.max(value, 0.1);
     case "source":
     case "currentSource":
       return Math.max(value, 0);
@@ -96,6 +104,8 @@ export function getSymbol(type: CircuitElement["type"]): string {
       return "(X)";
     case "switch":
       return "_/ _";
+    case "contactor":
+      return "[K]";
     case "source":
       return "(~)";
     case "currentSource":

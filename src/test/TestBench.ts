@@ -9,6 +9,8 @@ import { ComplexLinearSolver } from "../solver/ComplexLinearSolver";
 import { MnaElectricalResultsExtractor } from "../solver/MnaElectricalResultsExtractor";
 import { getCircuitState } from "../solver/CircuitTopology";
 import { compareMeasurements } from "../solver/measurementComparison";
+import { resolveContactors } from "../solver/contactorResolver";
+import { getContactorAdmittance } from "../core/contactorModel";
 import { createBenchPreset } from "../data/benchPreset";
 import { serializeCircuit, parseCircuitFile } from "../storage/circuitFile";
 
@@ -27,14 +29,16 @@ function expect(name: string, ok: boolean) {
   console.log(`${ok ? "OK    " : "FALHOU"} ${name}`);
 }
 
-function solve(elements: CircuitElement[], connections: CircuitConnection[]) {
+function solve(input: CircuitElement[], connections: CircuitConnection[]) {
+  const resolved = resolveContactors(input, connections, 60);
+  const elements = resolved.elements;
   const graph = CircuitGraphBuilder.build(elements, connections);
   const mna = ModifiedNodalAnalysisBuilder.build(graph, elements, 60);
   const sol = ComplexLinearSolver.solve(mna.matrix.map((r) => r.values), mna.rightHandSide);
   const results = MnaElectricalResultsExtractor.extract(graph, elements, mna, sol, 60);
   const get = (id: string) => results.elementResults.find((r) => r.elementId === id)!;
   const mag = (v: { real: number; imaginary: number }) => Math.hypot(v.real, v.imaginary);
-  return { results, get, mag, state: getCircuitState(elements, connections) };
+  return { results, get, mag, state: getCircuitState(elements, connections), resolved, elements };
 }
 
 function withChange(
@@ -65,7 +69,13 @@ const preset = createBenchPreset();
 const all = solve(preset.elements, preset.connections);
 expect("circuito fechado", all.state === "closed");
 expect("MNA resolvido", all.results.available);
-near("P fase A (W)", Math.abs(all.get("VA").complexPower.real), 125.8 ** 2 / 2000, 0.01);
+const coilY = getContactorAdmittance({ value: 8, contactor: { ratedVoltage: 127, powerFactor: 0.35 } }, 60)!;
+const coilP = 125.8 ** 2 * coilY.real;
+near("P bobina a 125,8 V (W)", coilP, 8 * 0.35 * (125.8 / 127) ** 2, 1e-9);
+near("P fase A = touch + bobina (W)", Math.abs(all.get("VA").complexPower.real), 125.8 ** 2 / 3165 + coilP, 1e-6);
+expect("bobina K1 energizada", all.resolved.coilStates.K1?.energized === true);
+expect("contato K1 fechado automaticamente", all.elements.find((e) => e.id === "K1A")!.closed === true);
+expect("convergiu", all.resolved.converged);
 near("P fase B (W) ≈ 167 medido", Math.abs(all.get("VB").complexPower.real), 167, 2);
 const lampPower = 2 * (129.1 ** 2 / getLampResistance({ value: 60, lamp: { ratedVoltage: 127 } })!);
 const motorPower = empty.activePower * (129.1 / 127) ** 2;
@@ -83,11 +93,27 @@ near("|I| lâmpada 1 (A)", off.mag(off.get("LP1").current), 0, 1e-6);
 near("P fase B cai 1 lâmpada (W)", Math.abs(off.get("VB").complexPower.real), lampPower / 2 + motorPower, 0.01);
 near("tensão sobre S1 aberto (V)", off.mag(off.get("S1").voltage), 129.1, 0.01);
 
-console.log("Tudo da fase B desligado");
+console.log("Tecla 3 desligada: bobina cai e o motor para");
+const noCoil = solve(withChange(preset.elements, "S3", { closed: false }), preset.connections);
+expect("bobina desenergizada", noCoil.resolved.coilStates.K1?.energized === false);
+expect("contato K1 abriu", noCoil.elements.find((e) => e.id === "K1A")!.closed === false);
+near("|I| motor (A)", noCoil.mag(noCoil.get("M1").current), 0, 1e-6);
+near("P fase B = só lâmpadas (W)", Math.abs(noCoil.get("VB").complexPower.real), lampPower, 0.01);
+
+console.log("Tudo desligado (como no início do vídeo)");
 let dark = withChange(preset.elements, "S1", { closed: false });
 dark = withChange(dark, "S2", { closed: false });
-dark = withChange(dark, "K1", { closed: false });
-expect("fase B aberta → estado ABERTO", getCircuitState(dark, preset.connections) === "open");
+dark = withChange(dark, "S3", { closed: false });
+const d = solve(dark, preset.connections);
+expect("fase B sem carga não bloqueia o cálculo", d.state === "closed");
+near("P fase A = só o touch ≈ 5 W medido", Math.abs(d.get("VA").complexPower.real), 5, 0.05);
+near("P fase B (W)", Math.abs(d.get("VB").complexPower.real), 0, 1e-3);
+
+console.log("Contato NF e tensão baixa");
+const nf = solve(withChange(preset.elements, "K1A", { normallyClosed: true }), preset.connections);
+expect("NF abre com bobina energizada", nf.elements.find((e) => e.id === "K1A")!.closed === false);
+const weak = solve(withChange(preset.elements, "VA", { value: 80 }), preset.connections);
+expect("80 V < 70 % de 127 V: bobina não arma", weak.resolved.coilStates.K1?.energized === false);
 
 console.log("Carga no motor");
 const loaded = withChange(preset.elements, "M1", {
@@ -118,6 +144,8 @@ if (parsed.ok) {
   const byId = (id: string) => els.find((e) => e.id === id)!;
   expect("mantém lâmpada", byId("LP1").lamp?.ratedVoltage === 127);
   expect("mantém interruptor", byId("S1").closed === true);
+  expect("mantém contato comandado", byId("K1A").controlledBy === "K1");
+  expect("mantém bobina", byId("K1").contactor?.powerFactor === 0.35);
   expect("mantém carga do motor", byId("M1").motor?.loadFactor === 0);
   expect("mantém leituras", byId("VB").measured?.power === 167);
   const reopened = solve(els, parsed.data.connections);

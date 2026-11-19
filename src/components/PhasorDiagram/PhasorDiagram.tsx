@@ -45,6 +45,7 @@ const COLORS: Record<
   motor: "#b45309",
   lamp: "#ca8a04",
   switch: "#475569",
+  contactor: "#7c3aed",
 };
 
 const UNITS: Record<

@@ -37,9 +37,11 @@ import {
 function ElementSymbol({
   type,
   closed = true,
+  controlled = false,
 }: {
   type: CircuitElement["type"];
   closed?: boolean;
+  controlled?: boolean;
 }) {
   const stroke = "#222222";
 
@@ -140,6 +142,33 @@ function ElementSymbol({
             {...common}
             stroke={closed ? stroke : "#dc2626"}
             d={closed ? "M 24 40 L 56 40" : "M 24 40 L 53 24"}
+          />
+          {controlled ? (
+            <path
+              {...common}
+              strokeDasharray="3 3"
+              d={closed ? "M 40 40 L 40 54" : "M 40 32 L 40 54"}
+            />
+          ) : null}
+        </>
+      ) : null}
+
+      {type === "contactor" ? (
+        <>
+          <path
+            {...common}
+            d="M 0 40 L 26 40 M 54 40 L 80 40"
+          />
+          <rect
+            {...common}
+            x={26}
+            y={30}
+            width={28}
+            height={20}
+          />
+          <path
+            {...common}
+            d="M 30 50 L 50 30"
           />
         </>
       ) : null}
@@ -449,6 +478,7 @@ export function CircuitComponent({
       <ElementSymbol
         type={element.type}
         closed={element.closed !== false}
+        controlled={element.controlledBy !== undefined}
       />
 
       {flow ? (

@@ -12,6 +12,7 @@ interface ToolboxProps {
   onAddMotor: () => void;
   onAddLamp: () => void;
   onAddSwitch: () => void;
+  onAddContactor: () => void;
   onLoadBenchPreset: () => void;
   /* Só no celular: abre a página de análise. */
   onExportReport?: () => void;
@@ -86,6 +87,13 @@ const ICONS = {
       <circle cx="23" cy="14" r="1.6" />
     </Icon>
   ),
+  contactor: (
+    <Icon>
+      <path d="M2 14 h8 M22 14 h8" />
+      <rect x="10" y="8" width="12" height="12" />
+      <path d="M12 18 l8 -8" />
+    </Icon>
+  ),
   analysis: (
     <Icon>
       <path d="M3 24 V4 M3 24 H29 M7 18 l5 -6 l5 4 l9 -10" />
@@ -105,6 +113,7 @@ export function Toolbox({
   onAddMotor,
   onAddLamp,
   onAddSwitch,
+  onAddContactor,
   onLoadBenchPreset,
   onExportReport,
   onOpenAnalysis,
@@ -138,6 +147,7 @@ export function Toolbox({
         {part(ICONS.motor, "Motor", onAddMotor, "Adicionar um Motor (carga por dados de placa)")}
         {part(ICONS.lamp, "Lâmpada", onAddLamp, "Adicionar uma Lâmpada incandescente (resistiva)")}
         {part(ICONS.switch, "Interruptor", onAddSwitch, "Adicionar um Interruptor (duplo clique liga/desliga)")}
+        {part(ICONS.contactor, "Contator", onAddContactor, "Adicionar um Contator (bobina + contato NA comandado)")}
         <span className="tb-sep tb-files" />
         <div className="tb-files tb-filegroup">
           <button type="button" className="tb-file" onClick={onNewCircuit}>

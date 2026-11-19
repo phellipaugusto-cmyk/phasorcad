@@ -13,6 +13,8 @@ import { SolverComparisonPanel } from "./components/ResultsPanel/SolverCompariso
 import { MnaElectricalResultsPanel } from "./components/ResultsPanel/MnaElectricalResultsPanel";
 import { MeasurementComparisonPanel } from "./components/ResultsPanel/MeasurementComparisonPanel";
 import { LampFields } from "./components/Properties/LampFields";
+import { SwitchFields } from "./components/Properties/SwitchFields";
+import { ContactorFields } from "./components/Properties/ContactorFields";
 import { MeasuredFields } from "./components/Properties/MeasuredFields";
 import { PhasorDiagram } from "./components/PhasorDiagram/PhasorDiagram";
 import { FrequencySweepPanel } from "./components/FrequencySweep/FrequencySweepPanel";
@@ -58,6 +60,9 @@ function App() {
     toggleSelectedSwitch,
     updateSelectedLampVoltage,
     updateSelectedMeasured,
+    updateSelectedSwitchControl,
+    updateSelectedContactor,
+    addContactor,
     removeSelectedElement,
     removeSelectedConnection,
     getDisplayValue,
@@ -81,6 +86,9 @@ function App() {
     legacyResult,
     result,
     bypassedElementIds,
+    resolvedElements,
+    coilStates,
+    contactorsConverged,
   } = useCircuitAnalysis(
     elements,
     connections,
@@ -104,7 +112,7 @@ function App() {
       const { downloadCircuitReport } = await import("./report/downloadReport");
 
       await downloadCircuitReport({
-        elements,
+        elements: resolvedElements,
         connections,
         frequency,
         result,
@@ -236,18 +244,19 @@ function App() {
             </div>
 
             {selectedElement.type === "switch" ? (
-              <div style={{ marginTop: "10px" }}>
-                <strong>Estado:</strong>{" "}
-                {selectedElement.closed === false ? "aberto (desligado)" : "fechado (ligado)"}
-                <br />
-                <button
-                  type="button"
-                  onClick={toggleSelectedSwitch}
-                  style={{ marginTop: "6px", cursor: "pointer" }}
-                >
-                  {selectedElement.closed === false ? "Ligar" : "Desligar"}
-                </button>
-              </div>
+              <SwitchFields
+                element={selectedElement}
+                resolved={
+                  resolvedElements.find(
+                    (item) => item.id === selectedElement.id
+                  ) ?? selectedElement
+                }
+                contactors={resolvedElements.filter(
+                  (item) => item.type === "contactor"
+                )}
+                onToggle={toggleSelectedSwitch}
+                onControlChange={updateSelectedSwitchControl}
+              />
             ) : (
             <div
               style={{
@@ -308,6 +317,19 @@ function App() {
               {getUnit()}
             </div>
             )}
+            {selectedElement.type === "contactor" ? (
+              <ContactorFields
+                element={selectedElement}
+                coil={coilStates[selectedElement.id]}
+                converged={contactorsConverged}
+                contacts={resolvedElements.filter(
+                  (item) =>
+                    item.type === "switch" &&
+                    item.controlledBy === selectedElement.id
+                )}
+                onChange={updateSelectedContactor}
+              />
+            ) : null}
             {selectedElement.type === "lamp" ? (
               <LampFields
                 element={selectedElement}
@@ -461,7 +483,7 @@ function App() {
   const phasorEl = (
     <PhasorDiagram
       results={mnaElectricalResults}
-      elements={elements}
+      elements={resolvedElements}
       selectedElementId={selectedElementId}
     />
   );
@@ -469,7 +491,7 @@ function App() {
   const waveEl = (
     <WaveformPanel
       results={mnaElectricalResults}
-      elements={elements}
+      elements={resolvedElements}
       selectedElementId={selectedElementId}
       frequency={frequency}
     />
@@ -521,6 +543,7 @@ function App() {
           onAddMotor={addMotor}
           onAddLamp={addLamp}
           onAddSwitch={addSwitch}
+          onAddContactor={addContactor}
           onLoadBenchPreset={loadBenchPreset}
           onExportReport={exportReport}
           onOpenAnalysis={() => setView("analysis")}
@@ -595,7 +618,7 @@ function App() {
             setSourceVoltage
           }
           elements={
-            elements
+            resolvedElements
           }
           setElements={
             setElements
@@ -719,13 +742,13 @@ function App() {
         {waveEl}
 
         <FrequencySweepPanel
-          elements={elements}
+          elements={resolvedElements}
           connections={connections}
           frequency={frequency}
         />
 
         <MeasurementComparisonPanel
-          elements={elements}
+          elements={resolvedElements}
           results={mnaElectricalResults}
         />
 

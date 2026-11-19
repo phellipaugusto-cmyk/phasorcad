@@ -5,6 +5,12 @@ import {
   type MotorParameters,
 } from "../core/motorModel";
 import { LAMP_DEFAULT_POWER_W } from "../core/lampModel";
+import {
+  CONTACTOR_DEFAULT_HOLDING_VA,
+  getContactorParameters,
+  type ContactorParameters,
+} from "../core/contactorModel";
+import type { SwitchControlChange } from "../components/Properties/SwitchFields";
 import type { MeasuredReadings } from "../core/CircuitElement";
 import { createBenchPreset } from "../data/benchPreset";
 import {
@@ -475,6 +481,72 @@ export function useCircuitEditor() {
     );
   }
 
+  /* Manual ou contato de uma bobina; NA/NF. */
+  function updateSelectedSwitchControl(change: SwitchControlChange) {
+    if (selectedElement?.type !== "switch") {
+      return;
+    }
+
+    const elementId = selectedElement.id;
+
+    setElements((currentElements) =>
+      currentElements.map((element) => {
+        if (element.id !== elementId) {
+          return element;
+        }
+
+        const next = { ...element };
+
+        if (change.controlledBy !== undefined) {
+          if (change.controlledBy === "") {
+            delete next.controlledBy;
+            delete next.normallyClosed;
+          } else {
+            next.controlledBy = change.controlledBy;
+          }
+        }
+
+        if (change.normallyClosed !== undefined) {
+          if (change.normallyClosed) {
+            next.normallyClosed = true;
+          } else {
+            delete next.normallyClosed;
+          }
+        }
+
+        return next;
+      })
+    );
+  }
+
+  function updateSelectedContactor(changes: Partial<ContactorParameters>) {
+    if (selectedElement?.type !== "contactor") {
+      return;
+    }
+
+    const elementId = selectedElement.id;
+    const current = getContactorParameters(selectedElement);
+    const next: ContactorParameters = {
+      ratedVoltage:
+        changes.ratedVoltage !== undefined &&
+        Number.isFinite(changes.ratedVoltage) &&
+        changes.ratedVoltage > 0
+          ? changes.ratedVoltage
+          : current.ratedVoltage,
+      powerFactor:
+        changes.powerFactor !== undefined &&
+        Number.isFinite(changes.powerFactor)
+          ? Math.min(1, Math.max(0.05, changes.powerFactor))
+          : current.powerFactor,
+    };
+
+    setElements((currentElements) =>
+      currentElements.map((element) =>
+        element.id === elementId ? { ...element, contactor: next } : element
+      )
+    );
+  }
+
   /* Abre o exemplo da bancada de Circuitos 2. */
   function loadBenchPreset() {
     const shouldOpen = window.confirm(
@@ -549,6 +621,7 @@ export function useCircuitEditor() {
       motor: "M",
       lamp: "LP",
       switch: "S",
+      contactor: "K",
     };
 
     const prefix =
@@ -742,6 +815,40 @@ export function useCircuitEditor() {
     );
   }
 
+  /* Bobina do contator + um contato NA já ligado a ela. */
+  function addContactor() {
+    const coilId = getNextElementId("contactor");
+    const contactId = getNextElementId("switch");
+    const position = getNewElementPosition();
+
+    const coil: CircuitElement = {
+      id: coilId,
+      type: "contactor",
+      label: coilId,
+      value: CONTACTOR_DEFAULT_HOLDING_VA,
+      contactor: getContactorParameters({}),
+      x: position.x,
+      y: position.y,
+      terminals: createCircuitTerminals(coilId),
+    };
+
+    const contact: CircuitElement = {
+      id: contactId,
+      type: "switch",
+      label: `Contato ${coilId}`,
+      value: 0,
+      controlledBy: coilId,
+      x: position.x,
+      y: position.y + 120,
+      terminals: createCircuitTerminals(contactId),
+    };
+
+    setElements((currentElements) => [...currentElements, coil, contact]);
+    setSelectedConnectionId(null);
+    setSelectedElementId(coilId);
+    setEditingElementId(null);
+  }
+
   function addInductor() {
     addElement(
       "inductor",
@@ -889,6 +996,9 @@ export function useCircuitEditor() {
       case "lamp":
         return "W";
 
+      case "contactor":
+        return "VA";
+
       default:
         return "";
     }
@@ -949,6 +1059,15 @@ export function useCircuitEditor() {
 
       case "switch":
         return;
+
+      case "contactor":
+        convertedValue =
+          Math.max(
+            value,
+            0.1
+          );
+
+        break;
 
       case "source":
         convertedValue =
@@ -1027,6 +1146,9 @@ export function useCircuitEditor() {
     toggleSelectedSwitch,
     updateSelectedLampVoltage,
     updateSelectedMeasured,
+    updateSelectedSwitchControl,
+    updateSelectedContactor,
+    addContactor,
     removeSelectedElement,
     removeSelectedConnection,
     getDisplayValue,

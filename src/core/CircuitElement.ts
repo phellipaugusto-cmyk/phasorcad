@@ -9,6 +9,7 @@ export type CircuitElementType =
   | "motor"
   | "lamp"
   | "switch"
+  | "contactor"
   | "source"
   | "currentSource";
 
@@ -75,6 +76,25 @@ export interface CircuitElement {
    * true = fechado (conduz). Ausente = fechado.
    */
   closed?: boolean;
+
+  /*
+   * Contato comandado (só para type "switch"): id da bobina do
+   * contator que o aciona. Com isso o estado vem da bobina e
+   * `closed` é calculado automaticamente.
+   */
+  controlledBy?: string;
+
+  /* Contato NF (fecha com a bobina desenergizada). Ausente = NA. */
+  normallyClosed?: boolean;
+
+  /*
+   * Bobina de contator (só para type "contactor"): `value` é a
+   * potência aparente de retenção, em VA, na tensão nominal.
+   */
+  contactor?: {
+    ratedVoltage: number;
+    powerFactor: number;
+  };
 
   /*
    * Leituras feitas na bancada (opcional), para comparar com o

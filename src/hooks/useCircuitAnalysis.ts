@@ -63,6 +63,9 @@ import {
 import {
   MnaCircuitResultBuilder,
 } from "../solver/MnaCircuitResultBuilder";
+import {
+  resolveContactors,
+} from "../solver/contactorResolver";
 
 function createEmptyResult(): CircuitResult {
   return {
@@ -82,12 +85,26 @@ function createEmptyResult(): CircuitResult {
  * quatro insumos muda.
  */
 export function useCircuitAnalysis(
-  elements: CircuitElement[],
+  editorElements: CircuitElement[],
   connections: CircuitConnection[],
   frequency: number,
   sourceVoltage: number
 ) {
   return useMemo(() => {
+    /*
+     * Contatores: os contatos comandados recebem o estado vindo
+     * das bobinas antes de qualquer outra análise.
+     */
+    const contactorResolution =
+      resolveContactors(
+        editorElements,
+        connections,
+        frequency
+      );
+
+    const elements =
+      contactorResolution.elements;
+
     const hasSource =
       elements.some(
         (element) =>
@@ -111,7 +128,7 @@ export function useCircuitAnalysis(
           color: "#15803d",
           label: "FECHADO",
           message:
-            "Existe um caminho elétrico fechado entre os dois terminais de cada fonte.",
+            "Existe um caminho elétrico fechado entre os terminais das fontes (fontes de tensão sem carga apenas não entregam corrente).",
         }
       : circuitState === "short"
         ? {
@@ -128,7 +145,7 @@ export function useCircuitAnalysis(
             color: "#b91c1c",
             label: "ABERTO",
             message:
-              "Não existe um caminho completo entre os dois terminais de cada fonte. A corrente é zero.",
+              "Nenhuma fonte de tensão tem um caminho completo entre seus terminais (ou uma fonte de corrente está em aberto). A corrente é zero.",
           };
 
   const circuitGraph =
@@ -285,6 +302,9 @@ export function useCircuitAnalysis(
       legacyResult,
       result,
       bypassedElementIds,
+      resolvedElements: elements,
+      coilStates: contactorResolution.coilStates,
+      contactorsConverged: contactorResolution.converged,
     };
-  }, [elements, connections, frequency, sourceVoltage]);
+  }, [editorElements, connections, frequency, sourceVoltage]);
 }

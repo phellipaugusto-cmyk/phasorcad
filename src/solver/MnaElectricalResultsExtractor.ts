@@ -1,6 +1,7 @@
 import { getMotorAdmittance } from "../core/motorModel";
 import { getLampAdmittance } from "../core/lampModel";
 import { getSwitchAdmittance } from "../core/switchModel";
+import { getContactorAdmittance } from "../core/contactorModel";
 import type {
   CircuitGraph,
 } from "../core/CircuitGraph";
@@ -151,6 +152,14 @@ function getPassiveAdmittance(
 
     case "switch": {
       const admittance = getSwitchAdmittance(element);
+
+      return admittance
+        ? createComplex(admittance.real, admittance.imaginary)
+        : null;
+    }
+
+    case "contactor": {
+      const admittance = getContactorAdmittance(element, frequency);
 
       return admittance
         ? createComplex(admittance.real, admittance.imaginary)

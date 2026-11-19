@@ -651,6 +651,11 @@ export function Canvas({
 
     /* Duplo clique no interruptor liga/desliga em vez de editar. */
     if (element.type === "switch") {
+      /* Contato de contator: o estado vem da bobina. */
+      if (element.controlledBy) {
+        return;
+      }
+
       setElements(
         elements.map((item) =>
           item.id === element.id

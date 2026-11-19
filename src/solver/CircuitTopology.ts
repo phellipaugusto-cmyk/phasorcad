@@ -432,14 +432,22 @@ export function getCircuitState(
     return "short";
   }
 
-  /* Fechado só se TODAS as fontes têm caminho entre seus terminais. */
-  return sources.every((source) =>
-    isCircuitClosed(
-      elements,
-      connections,
-      source
+  const hasPath = (source: CircuitElement) =>
+    isCircuitClosed(elements, connections, source);
+
+  /*
+   * Fonte de corrente sem caminho é impossível (tensão infinita):
+   * o circuito fica aberto. Uma fonte de tensão sem carga apenas
+   * não entrega corrente (ex.: uma fase com todas as cargas
+   * desligadas), então basta UMA fonte com caminho fechado.
+   */
+  if (
+    sources.some(
+      (source) => source.type === "currentSource" && !hasPath(source)
     )
-  )
-    ? "closed"
-    : "open";
+  ) {
+    return "open";
+  }
+
+  return sources.some(hasPath) ? "closed" : "open";
 }

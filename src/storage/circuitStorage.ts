@@ -1,5 +1,6 @@
 import { getMotorParameters } from "../core/motorModel";
 import { getLampRatedVoltage } from "../core/lampModel";
+import { getContactorParameters } from "../core/contactorModel";
 import type {
   CircuitElement,
   CircuitElementType,
@@ -37,6 +38,7 @@ const validElementTypes:
     "motor",
     "lamp",
     "switch",
+    "contactor",
   ];
 
 function isElementType(
@@ -147,7 +149,19 @@ export function migrateElement(
       ? { lamp: { ratedVoltage: getLampRatedVoltage(candidate) } }
       : {}),
     ...(candidate.type === "switch"
-      ? { closed: candidate.closed !== false }
+      ? {
+          closed: candidate.closed !== false,
+          ...(typeof candidate.controlledBy === "string" &&
+          candidate.controlledBy !== ""
+            ? { controlledBy: candidate.controlledBy }
+            : {}),
+          ...(candidate.normallyClosed === true
+            ? { normallyClosed: true }
+            : {}),
+        }
+      : {}),
+    ...(candidate.type === "contactor"
+      ? { contactor: getContactorParameters(candidate) }
       : {}),
     ...(sanitizeMeasured(candidate.measured)
       ? { measured: sanitizeMeasured(candidate.measured) }

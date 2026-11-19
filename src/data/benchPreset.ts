@@ -6,21 +6,28 @@ import { createCircuitTerminals } from "../core/CircuitTerminal";
  * Exemplo "Bancada de Circuitos 2" (vídeo de 11/11/2026).
  *
  * Na bancada: multimedidor KWS-306, contator tripolar, interruptor
- * touch, duas lâmpadas e um motor de ventilador (sem hélice).
- * O medidor mostrou só as fases A e B energizadas (C = 0 V), então
- * o exemplo é um sistema 127/220 V a dois fios-fase + neutro:
+ * touch de 3 teclas, duas lâmpadas e um motor de ventilador (sem
+ * hélice). O medidor mostrou só as fases A e B energizadas (C = 0 V):
+ * sistema 127/220 V com dois fios-fase + neutro.
  *
- *   Fase A (125,8 V ∠0°)    → comando (bobina do contator + touch)
- *   Fase B (129,1 V ∠−120°) → S1 → lâmpada 1 (60 W)
- *                            → S2 → lâmpada 2 (60 W)
- *                            → K1 (contato do contator) → motor
+ * Automação (o contator trabalha sozinho):
  *
- * Leituras do vídeo, com tudo ligado:
- *   A: 125,8 V, 8 W      B: 129,1 V, 167 W      C: 0 V
+ *   Fase A (125,8 V ∠0°)    → módulo touch (consumo próprio, ~5 W)
+ *                            → tecla 3 → bobina do contator K1
+ *   Fase B (129,1 V ∠−120°) → tecla 1 → lâmpada 1 (60 W)
+ *                            → tecla 2 → lâmpada 2 (60 W)
+ *                            → contato NA de K1 → motor
  *
- * O motor é genérico de ventilador: 127 V, 45 W no eixo, η = 35 %,
- * FP = 0,95 (capacitor permanente), girando a vazio (sem hélice).
- * O comando é aproximado por um resistor que dá os 8 W medidos.
+ * Ligar a tecla 3 energiza K1, que fecha o contato e liga o motor.
+ *
+ * Leituras do vídeo:
+ *   tudo desligado: A = 125,4 V, 5 W     B = 129,3 V, 0 W
+ *   tudo ligado:    A = 125,8 V, 8 W     B = 129,1 V, 167 W
+ * O exemplo abre com tudo ligado e essas leituras para comparar.
+ *
+ * Motor genérico de ventilador: 127 V, 45 W no eixo, η = 35 %,
+ * FP = 0,95 (capacitor permanente), a vazio (sem hélice).
+ * Bobina: 8 VA de retenção, FP 0,35, 127 V.
  */
 
 function element(
@@ -63,22 +70,28 @@ export function createBenchPreset(): {
     element("VA", "source", "Fase A", 125.8, 40, 40, {
       measured: { voltage: 125.8, power: 8 },
     }),
-    element("RCMD", "resistor", "Comando (bobina + touch)", 2000, 360, 40),
+    element("RT", "resistor", "Módulo touch", 3165, 360, 40),
+    element("S3", "switch", "Touch tecla 3", 0, 200, 150, { closed: true }),
+    element("K1", "contactor", "Bobina K1", 8, 360, 150, {
+      contactor: { ratedVoltage: 127, powerFactor: 0.35 },
+    }),
 
-    element("VB", "source", "Fase B", 129.1, 40, 280, {
+    element("VB", "source", "Fase B", 129.1, 40, 380, {
       phase: -120,
       measured: { voltage: 129.1, power: 167 },
     }),
-    element("S1", "switch", "Interruptor 1", 0, 200, 200, { closed: true }),
-    element("LP1", "lamp", "Lâmpada 1", 60, 360, 200, {
+    element("S1", "switch", "Touch tecla 1", 0, 200, 270, { closed: true }),
+    element("LP1", "lamp", "Lâmpada 1", 60, 360, 270, {
       lamp: { ratedVoltage: 127 },
     }),
-    element("S2", "switch", "Interruptor 2", 0, 200, 320, { closed: true }),
-    element("LP2", "lamp", "Lâmpada 2", 60, 360, 320, {
+    element("S2", "switch", "Touch tecla 2", 0, 200, 390, { closed: true }),
+    element("LP2", "lamp", "Lâmpada 2", 60, 360, 390, {
       lamp: { ratedVoltage: 127 },
     }),
-    element("K1", "switch", "Contator K1", 0, 200, 440, { closed: true }),
-    element("M1", "motor", "Motor do ventilador", 0.045, 360, 440, {
+    element("K1A", "switch", "Contato K1", 0, 200, 510, {
+      controlledBy: "K1",
+    }),
+    element("M1", "motor", "Motor do ventilador", 0.045, 360, 510, {
       motor: {
         efficiency: 0.35,
         powerFactor: 0.95,
@@ -91,21 +104,24 @@ export function createBenchPreset(): {
   const connections: CircuitConnection[] = [
     /* Neutro comum. */
     wire("VA:left", "VB:left"),
-    wire("RCMD:right", "VA:left"),
+    wire("RT:right", "VA:left"),
+    wire("K1:right", "VA:left"),
     wire("LP1:right", "VB:left"),
     wire("LP2:right", "VB:left"),
     wire("M1:right", "VB:left"),
 
-    /* Fase A → comando. */
-    wire("VA:right", "RCMD:left"),
+    /* Fase A → touch e comando da bobina. */
+    wire("VA:right", "RT:left"),
+    wire("VA:right", "S3:left"),
+    wire("S3:right", "K1:left"),
 
     /* Fase B → cargas. */
     wire("VB:right", "S1:left"),
     wire("VB:right", "S2:left"),
-    wire("VB:right", "K1:left"),
+    wire("VB:right", "K1A:left"),
     wire("S1:right", "LP1:left"),
     wire("S2:right", "LP2:left"),
-    wire("K1:right", "M1:left"),
+    wire("K1A:right", "M1:left"),
   ];
 
   return { elements, connections, frequency: BENCH_PRESET_FREQUENCY };

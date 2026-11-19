@@ -60,6 +60,7 @@ const TYPE_NAMES: Record<string, string> = {
   motor: "Motor monofásico",
   lamp: "Lâmpada incandescente",
   switch: "Interruptor",
+  contactor: "Bobina de contator",
 };
 
 const COLORS: Record<string, string> = {
@@ -71,6 +72,7 @@ const COLORS: Record<string, string> = {
   motor: "#b45309",
   lamp: "#ca8a04",
   switch: "#475569",
+  contactor: "#7c3aed",
 };
 
 const STATE_TEXT: Record<string, string> = {
@@ -279,6 +281,17 @@ function drawSchematic(
         seg(0, 24);
         seg(56, 80);
         seg(24, 56, 0, element.closed === false ? -16 : 0);
+        break;
+      }
+      case "contactor": {
+        /* Bobina: retângulo com a diagonal. */
+        seg(0, 26);
+        seg(54, 80);
+        seg(26, 54, -10, -10);
+        seg(26, 54, 10, 10);
+        seg(26, 26, -10, 10);
+        seg(54, 54, -10, 10);
+        seg(30, 50, 10, -10);
         break;
       }
       default: {
