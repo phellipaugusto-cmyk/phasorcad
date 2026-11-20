@@ -59,7 +59,9 @@ export function ThreePhasePanel({ groups }: ThreePhasePanelProps) {
                 ? g.balanced
                   ? ", equilibrada"
                   : ", desequilibrada"
-                : `, sequência ${g.sequence}${g.balanced ? "" : " (alimentando carga desequilibrada)"}`}
+                : g.voltageUnbalance > 0.01
+                  ? ", desequilibrado"
+                  : `, sequência ${g.sequence}${g.balanced ? "" : " (alimentando carga desequilibrada)"}`}
             </div>
 
             <table className="measure-table">
@@ -177,6 +179,12 @@ export function ThreePhasePanel({ groups }: ThreePhasePanelProps) {
                   I₁ = {fmt(magnitude(g.sequenceCurrents.positive), 3)} A, I₂ ={" "}
                   {fmt(magnitude(g.sequenceCurrents.negative), 3)} A; desequilíbrio I₂/I₁ ={" "}
                   {fmt(g.unbalanceFactor, 1)} %.
+                  <br />
+                  Componentes simétricas de V_{g.connection === "Y" ? "fase" : "linha"}: V₀ ={" "}
+                  {fmt(magnitude(g.sequenceVoltages.zero), 2)} V, V₁ ={" "}
+                  {fmt(magnitude(g.sequenceVoltages.positive), 2)} V, V₂ ={" "}
+                  {fmt(magnitude(g.sequenceVoltages.negative), 2)} V; desequilíbrio V₂/V₁ ={" "}
+                  {fmt(g.voltageUnbalance, 2)} %.
                 </>
               ) : null}
 

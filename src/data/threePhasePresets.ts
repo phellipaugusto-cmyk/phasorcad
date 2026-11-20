@@ -20,6 +20,9 @@ import {
  *   Y-Y com neutro: cada fase com 127 V; I_N ≠ 0
  *   Y-Y sem neutro: o neutro da carga se desloca (Millman)
  *   Y-Δ: as mesmas Z como Z_AB, Z_BC, Z_CA
+ *
+ * Gerador desequilibrado (carga equilibrada 8 + j6 Ω em Y com
+ * neutro): V_AN = 127 ∠0°, V_BN = 115 ∠−125°, V_CN = 135 ∠118°.
  */
 
 export type ThreePhasePresetKind =
@@ -29,7 +32,8 @@ export type ThreePhasePresetKind =
   | "DD"
   | "YYn-u"
   | "YY-u"
-  | "YD-u";
+  | "YD-u"
+  | "YYn-us";
 
 export const THREE_PHASE_PRESETS: { kind: ThreePhasePresetKind; title: string }[] = [
   { kind: "YY", title: "Trifásico Y-Y (com neutro)" },
@@ -39,7 +43,15 @@ export const THREE_PHASE_PRESETS: { kind: ThreePhasePresetKind; title: string }[
   { kind: "YYn-u", title: "Desequilibrado Y-Y com neutro" },
   { kind: "YY-u", title: "Desequilibrado Y-Y sem neutro" },
   { kind: "YD-u", title: "Desequilibrado Y-Δ" },
+  { kind: "YYn-us", title: "Gerador desequilibrado Y-Y com neutro" },
 ];
+
+/* Gerador desequilibrado do exemplo (V_AN, V_BN, V_CN). */
+export const THREE_PHASE_UNBALANCED_SOURCE = {
+  A: { value: 127, phase: 0 },
+  B: { value: 115, phase: -125 },
+  C: { value: 135, phase: 118 },
+};
 
 export const THREE_PHASE_UNBALANCED_IMPEDANCES = {
   A: { resistance: 10, reactance: 0 },
@@ -58,12 +70,14 @@ export function createThreePhasePreset(kind: ThreePhasePresetKind): {
   const sourceConnection = kind[0] === "Y" ? "Y" : "D";
   const loadConnection = kind[1] === "Y" ? "Y" : "D";
   const unbalanced = kind.endsWith("-u");
-  const withNeutral = kind === "YY" || kind === "YYn-u";
+  const unbalancedSource = kind.endsWith("-us");
+  const withNeutral = kind === "YY" || kind === "YYn-u" || kind === "YYn-us";
 
   const source = createThreePhaseSource({
     groupId: "G",
     connection: sourceConnection,
     lineVoltage: THREE_PHASE_PRESET_LINE_VOLTAGE,
+    ...(unbalancedSource ? { phasors: THREE_PHASE_UNBALANCED_SOURCE } : {}),
     label: "Gerador",
     x: 40,
     y: 60,

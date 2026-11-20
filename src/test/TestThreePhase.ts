@@ -219,4 +219,59 @@ console.log("\nDesequilibrado (Z_A = 10, Z_B = 6 + j8, Z_C = 5 − j5 Ω)");
   expect("arquivo mantém 'desequilibrada'", parsed.ok && parsed.data.elements.find((e) => e.id === "CZA")!.group!.balanced === false);
 }
 
+console.log("\nGerador desequilibrado (127∠0°, 115∠−125°, 135∠118°; carga 8 + j6 Y com neutro)");
+{
+  type C = { re: number; im: number };
+  const c = (re: number, im = 0): C => ({ re, im });
+  const polar = (m: number, deg: number): C => c(m * Math.cos((deg * Math.PI) / 180), m * Math.sin((deg * Math.PI) / 180));
+  const addc = (a: C, b: C): C => c(a.re + b.re, a.im + b.im);
+  const subc = (a: C, b: C): C => c(a.re - b.re, a.im - b.im);
+  const mulc = (a: C, b: C): C => c(a.re * b.re - a.im * b.im, a.re * b.im + a.im * b.re);
+  const divc = (a: C, b: C): C => { const d = b.re ** 2 + b.im ** 2; return c((a.re * b.re + a.im * b.im) / d, (a.im * b.re - a.re * b.im) / d); };
+  const abs = (a: C) => Math.hypot(a.re, a.im);
+  const a1 = polar(1, 120), a2 = polar(1, -120);
+  const V = [polar(127, 0), polar(115, -125), polar(135, 118)];
+  const Z = c(8, 6);
+  const I = V.map((v) => divc(v, Z));
+  const IN = I.reduce(addc);
+  const V1 = divc(addc(addc(V[0], mulc(a1, V[1])), mulc(a2, V[2])), c(3));
+  const V2 = divc(addc(addc(V[0], mulc(a2, V[1])), mulc(a1, V[2])), c(3));
+  const V0 = divc(addc(addc(V[0], V[1]), V[2]), c(3));
+
+  const preset = createThreePhasePreset("YYn-us");
+  const r = analyze(preset.elements, preset.connections);
+  const m = (p: { real: number; imaginary: number }) => Math.hypot(p.real, p.imaginary);
+  expect("gerador marcado como desequilibrado", !r.gen.balanced);
+  near("I_B = V_BN/Z (A)", m(r.load.lineCurrents.B), abs(I[1]), 1e-6);
+  near("I_N (A)", r.load.neutralCurrent!, abs(IN), 1e-6);
+  near("V1 (V)", m(r.gen.sequenceVoltages.positive), abs(V1), 1e-6);
+  near("V2 (V)", m(r.gen.sequenceVoltages.negative), abs(V2), 1e-6);
+  near("V0 (V)", m(r.gen.sequenceVoltages.zero), abs(V0), 1e-6);
+  near("desequilíbrio V2/V1 (%)", r.gen.voltageUnbalance, (abs(V2) / abs(V1)) * 100, 1e-6);
+  near("V_AB = V_AN − V_BN (V)", m(r.gen.lineVoltages.A), abs(subc(V[0], V[1])), 1e-6);
+
+  // Editar uma fonte não mexe nas outras.
+  const edited = enforceBalance(preset.elements, preset.elements.map((e) => (e.id === "GVBN" ? { ...e, value: 100, phase: -100 } : e)));
+  expect("Y desequilibrado: só V_BN muda", edited.find((e) => e.id === "GVAN")!.value === 127 && edited.find((e) => e.id === "GVBN")!.phase === -100 && edited.find((e) => e.id === "GVCN")!.phase === 118);
+
+  // Y → Δ mantém as tensões de linha; Δ força V_CA pela LKT.
+  const delta = rebuildGroup(preset.elements, preset.connections, "G", { connection: "D" });
+  const rd = analyze(delta.elements, delta.connections);
+  expect("continua desequilibrado", delta.elements.find((e) => e.id === "GVAB")!.group!.balanced === false);
+  near("Δ: V_AB igual ao do Y (V)", m(rd.gen.lineVoltages.A), abs(subc(V[0], V[1])), 1e-4);
+  near("Δ: V_CA igual ao do Y (V)", m(rd.gen.lineVoltages.C), abs(subc(V[2], V[0])), 1e-4);
+  const changed = enforceBalance(delta.elements, delta.elements.map((e) => (e.id === "GVAB" ? { ...e, value: 230 } : e)));
+  const ab = changed.find((e) => e.id === "GVAB")!, bc = changed.find((e) => e.id === "GVBC")!, ca = changed.find((e) => e.id === "GVCA")!;
+  const loop = addc(addc(polar(ab.value, ab.phase ?? 0), polar(bc.value, bc.phase ?? 0)), polar(ca.value, ca.phase ?? 0));
+  near("Δ: V_AB + V_BC + V_CA = 0 depois de editar V_AB (V)", abs(loop), 0, 1e-6);
+  const rc = analyze(changed, delta.connections);
+  expect("Δ desequilibrado resolve sem corrente absurda", rc.results.available && rc.gen.lineCurrent < 100);
+
+  // Volta para Y: estrela sem sequência zero, mesmas tensões de linha.
+  const back = rebuildGroup(delta.elements, delta.connections, "G", { connection: "Y" });
+  const rb = analyze(back.elements, back.connections);
+  near("Δ → Y: V_BC preservada (V)", m(rb.gen.lineVoltages.B), abs(subc(V[1], V[2])), 1e-4);
+  near("Δ → Y: V0 = 0", m(rb.gen.sequenceVoltages.zero), 0, 1e-6);
+}
+
 console.log(failures === 0 ? "\nTrifásico: todos os testes passaram." : `\nTrifásico: ${failures} FALHA(S).`);

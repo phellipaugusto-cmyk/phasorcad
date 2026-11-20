@@ -76,6 +76,12 @@ export interface ThreePhaseGroupAnalysis {
   sequenceCurrents: { zero: Phasor; positive: Phasor; negative: Phasor };
   unbalanceFactor: number;
   /*
+   * Componentes simétricas das tensões de fase (Y: V_AN…; Δ: V_AB…)
+   * e o desequilíbrio de tensão |V₂|/|V₁| (em %).
+   */
+  sequenceVoltages: { zero: Phasor; positive: Phasor; negative: Phasor };
+  voltageUnbalance: number;
+  /*
    * Só cargas: Z de cada fase (na frequência atual) e o equivalente
    * na outra ligação (Kennelly; equilibrada: Z_Y = Z_Δ/3).
    *   Y: A = Z_A…   Δ: A = Z_AB, B = Z_BC, C = Z_CA
@@ -313,6 +319,12 @@ export function analyzeThreePhase(
       lineCurrents.C
     );
     const positive = magnitude(sequenceCurrents.positive);
+    const sequenceVoltages = symmetricalComponents(
+      phaseVoltages.A,
+      phaseVoltages.B,
+      phaseVoltages.C
+    );
+    const positiveV = magnitude(sequenceVoltages.positive);
     const impedances = isLoad
       ? (Object.fromEntries(
           members.map((m) => [m.group!.role, getImpedanceAt(m, frequency)])
@@ -349,15 +361,21 @@ export function analyzeThreePhase(
          */
         balanced: isLoad
           ? group.balanced !== false
-          : positive < 1e-12 ||
-            (magnitude(sequenceCurrents.negative) < 1e-3 * positive &&
-              magnitude(sequenceCurrents.zero) < 1e-3 * positive),
+          : group.balanced !== false &&
+            (positive < 1e-12 ||
+              (magnitude(sequenceCurrents.negative) < 1e-3 * positive &&
+                magnitude(sequenceCurrents.zero) < 1e-3 * positive)),
         phasePowers,
         neutralShift:
           isLoad && group.connection === "Y" && sourceNeutral
             ? sub(v("N"), sourceNeutral)
             : null,
         sequenceCurrents,
+        sequenceVoltages,
+        voltageUnbalance:
+          positiveV > 1e-12
+            ? (magnitude(sequenceVoltages.negative) / positiveV) * 100
+            : 0,
         unbalanceFactor:
           positive > 1e-12
             ? (magnitude(sequenceCurrents.negative) / positive) * 100

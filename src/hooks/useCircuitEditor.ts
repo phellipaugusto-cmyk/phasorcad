@@ -1041,11 +1041,30 @@ export function useCircuitEditor() {
      * Equilibrada ↔ desequilibrada. Ao voltar a equilibrar, as três
      * fases recebem a Z do membro selecionado.
      */
-    if (changes.balanced !== undefined) {
-      if (group.kind !== "load") {
-        return;
-      }
+    if (changes.balanced !== undefined && group.kind === "source") {
+      /* Voltar a equilibrar: as três com o módulo da selecionada. */
+      const volts = selectedElement.value;
 
+      setElements((currentElements) =>
+        currentElements.map((element) => {
+          if (element.group?.id !== group.id) {
+            return element;
+          }
+
+          const nextGroup = { ...element.group };
+
+          if (changes.balanced) {
+            delete nextGroup.balanced;
+            return { ...element, group: nextGroup, value: volts };
+          }
+
+          return { ...element, group: { ...nextGroup, balanced: false } };
+        })
+      );
+      return;
+    }
+
+    if (changes.balanced !== undefined) {
       const z = getImpedanceParameters(selectedElement);
 
       setElements((currentElements) =>

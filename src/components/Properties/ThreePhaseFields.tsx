@@ -22,7 +22,7 @@ export function ThreePhaseFields({ element, members, onChange }: ThreePhaseField
   }
 
   const isSource = group.kind === "source";
-  const balanced = isSource || group.balanced !== false;
+  const balanced = group.balanced !== false;
   const name = element.label.replace(/\s+\S+$/, "");
 
   return (
@@ -30,7 +30,7 @@ export function ThreePhaseFields({ element, members, onChange }: ThreePhaseField
       <div>
         <strong>{name}</strong> —{" "}
         {isSource
-          ? "gerador trifásico equilibrado"
+          ? `gerador trifásico ${balanced ? "equilibrado" : "desequilibrado"}`
           : `carga trifásica ${balanced ? "equilibrada" : "desequilibrada"}`}
       </div>
 
@@ -47,20 +47,27 @@ export function ThreePhaseFields({ element, members, onChange }: ThreePhaseField
         </select>
       </label>
 
-      {!isSource ? (
-        <label className="motor-field">
-          <span>Fases</span>
-          <select
-            value={balanced ? "eq" : "deseq"}
-            onChange={(event) => onChange({ balanced: event.target.value === "eq" })}
-          >
-            <option value="eq">Equilibrada (mesma Z nas três)</option>
-            <option value="deseq">Desequilibrada (Z própria por fase)</option>
-          </select>
-        </label>
-      ) : null}
+      <label className="motor-field">
+        <span>Fases</span>
+        <select
+          value={balanced ? "eq" : "deseq"}
+          onChange={(event) => onChange({ balanced: event.target.value === "eq" })}
+        >
+          {isSource ? (
+            <>
+              <option value="eq">Equilibrado (mesmo módulo, 120° entre fases)</option>
+              <option value="deseq">Desequilibrado (módulo e ângulo por fase)</option>
+            </>
+          ) : (
+            <>
+              <option value="eq">Equilibrada (mesma Z nas três)</option>
+              <option value="deseq">Desequilibrada (Z própria por fase)</option>
+            </>
+          )}
+        </select>
+      </label>
 
-      {isSource ? (
+      {isSource && balanced ? (
         <>
           <NumberField
             label="Tensão de linha V_L (V)"
@@ -92,7 +99,11 @@ export function ThreePhaseFields({ element, members, onChange }: ThreePhaseField
             : "Em Δ, cada Z fica entre duas linhas: Z_AB, Z_BC e Z_CA."}{" "}
         {balanced
           ? "Mudar um membro muda os três."
-          : "Cada fase tem a sua Z: selecione Z_A, Z_B ou Z_C (Z_AB…) para editar."}{" "}
+          : isSource
+            ? group.connection === "Y"
+              ? "Cada fonte tem módulo (Valor) e ângulo (Fase) próprios: selecione V_AN, V_BN ou V_CN para editar."
+              : "Edite V_AB e V_BC (Valor e Fase); V_CA é calculada sozinha para a malha do triângulo fechar em zero (LKT)."
+            : "Cada fase tem a sua Z: selecione Z_A, Z_B ou Z_C (Z_AB…) para editar."}{" "}
         Trocar a ligação mantém os fios das linhas
         A, B e C{group.connection === "Y" ? " (o do neutro é removido)" : ""}.
       </p>

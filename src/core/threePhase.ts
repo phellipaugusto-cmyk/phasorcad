@@ -148,11 +148,85 @@ export function createGroupWires(members: CircuitElement[]): CircuitConnection[]
   return wires;
 }
 
+/* Tensão de um membro: módulo (V eficaz) e ângulo (°). */
+export interface SourcePhasor {
+  value: number;
+  phase: number;
+}
+
+const toRect = (p: SourcePhasor) => ({
+  re: p.value * Math.cos((p.phase * Math.PI) / 180),
+  im: p.value * Math.sin((p.phase * Math.PI) / 180),
+});
+const toPolar = (z: { re: number; im: number }): SourcePhasor => {
+  const value = Math.hypot(z.re, z.im);
+  const phase = value > 1e-12 ? (Math.atan2(z.im, z.re) * 180) / Math.PI : 0;
+  return { value: Number(value.toPrecision(10)), phase: Number(phase.toFixed(6)) };
+};
+const subRect = (a: { re: number; im: number }, b: { re: number; im: number }) => ({
+  re: a.re - b.re,
+  im: a.im - b.im,
+});
+
+/*
+ * Tensões de linha (V_AB, V_BC, V_CA) dos membros de um gerador,
+ * e o caminho de volta para Y sem componente de sequência zero:
+ *   V_AN = (V_AB − V_CA)/3, V_BN = (V_BC − V_AB)/3, V_CN = (V_CA − V_BC)/3
+ */
+export function getSourceLinePhasors(
+  members: CircuitElement[]
+): Record<ThreePhaseRole, SourcePhasor> | null {
+  const byRole = (role: ThreePhaseRole) => members.find((m) => m.group?.role === role);
+  const a = byRole("A");
+  const b = byRole("B");
+  const c = byRole("C");
+
+  if (!a?.group || !b || !c) {
+    return null;
+  }
+
+  const p = (m: CircuitElement) => toRect({ value: m.value, phase: m.phase ?? 0 });
+
+  if (a.group.connection === "D") {
+    return { A: toPolar(p(a)), B: toPolar(p(b)), C: toPolar(p(c)) };
+  }
+
+  return {
+    A: toPolar(subRect(p(a), p(b))),
+    B: toPolar(subRect(p(b), p(c))),
+    C: toPolar(subRect(p(c), p(a))),
+  };
+}
+
+export function linePhasorsToStar(
+  line: Record<ThreePhaseRole, SourcePhasor>
+): Record<ThreePhaseRole, SourcePhasor> {
+  const ab = toRect(line.A);
+  const bc = toRect(line.B);
+  const ca = toRect(line.C);
+  const third = (z: { re: number; im: number }) => ({ re: z.re / 3, im: z.im / 3 });
+
+  return {
+    A: toPolar(third(subRect(ab, ca))),
+    B: toPolar(third(subRect(bc, ab))),
+    C: toPolar(third(subRect(ca, bc))),
+  };
+}
+
+/* Δ: V_CA = −(V_AB + V_BC), para a malha das fontes fechar em zero. */
+export function closeDeltaLoop(ab: SourcePhasor, bc: SourcePhasor): SourcePhasor {
+  const x = toRect(ab);
+  const y = toRect(bc);
+  return toPolar({ re: -(x.re + y.re), im: -(x.im + y.im) });
+}
+
 export interface ThreePhaseSourceOptions {
   groupId: string;
   connection: "Y" | "D";
   /* Tensão de LINHA (V eficaz). */
   lineVoltage: number;
+  /* Desequilibrado: tensão de cada membro (Y: V_AN…; Δ: V_AB…). */
+  phasors?: Record<ThreePhaseRole, SourcePhasor>;
   sequence?: "ABC" | "ACB";
   x: number;
   y: number;
@@ -166,6 +240,7 @@ export function createThreePhaseSource(
   const sequence = options.sequence ?? "ABC";
   const label = options.label ?? groupId;
   const value = connection === "Y" ? lineVoltage / Math.sqrt(3) : lineVoltage;
+  const phasors = options.phasors;
 
   const elements = ROLES.map((role, index): CircuitElement => {
     const group: ThreePhaseGroup = {
@@ -174,6 +249,7 @@ export function createThreePhaseSource(
       connection,
       role,
       sequence,
+      ...(phasors ? { balanced: false } : {}),
     };
     const id = `${groupId}${getMemberName(group)}`;
 
@@ -181,8 +257,8 @@ export function createThreePhaseSource(
       id,
       type: "source",
       label: `${label} ${getMemberName(group)}`,
-      value,
-      phase: getSourceRoleAngle(group),
+      value: phasors ? phasors[role].value : value,
+      phase: phasors ? phasors[role].phase : getSourceRoleAngle(group),
       x,
       y: y + index * GROUP_ROW_SPACING,
       terminals: createCircuitTerminals(id),
@@ -294,12 +370,31 @@ export function rebuildGroup(
   const labelBase = first.label.replace(/\s+\S+$/, "");
   const position = { x: first.x, y: first.y };
 
+  /*
+   * Gerador desequilibrado: mantém as tensões de LINHA (o que a
+   * carga enxerga). Y → Δ: V_AB = V_AN − V_BN…; Δ → Y: estrela sem
+   * sequência zero.
+   */
+  const unbalancedSource =
+    first.group.kind === "source" && first.group.balanced === false;
+  const linePhasors = unbalancedSource ? getSourceLinePhasors(members) : null;
+  const sourcePhasors = linePhasors
+    ? connection === "D"
+      ? linePhasors
+      : first.group.connection === "Y"
+        ? (Object.fromEntries(
+            members.map((m) => [m.group!.role, { value: m.value, phase: m.phase ?? 0 }])
+          ) as Record<ThreePhaseRole, SourcePhasor>)
+        : linePhasorsToStar(linePhasors)
+    : undefined;
+
   const rebuilt =
     first.group.kind === "source"
       ? createThreePhaseSource({
           groupId,
           connection,
           lineVoltage: getSourceLineVoltage(members),
+          ...(sourcePhasors ? { phasors: sourcePhasors } : {}),
           sequence: changes.sequence ?? first.group.sequence ?? "ABC",
           label: labelBase,
           ...position,
@@ -400,6 +495,33 @@ export function enforceBalance(
 
     /* Carga desequilibrada: cada fase é livre. */
     if (members[0].group?.kind === "load" && members[0].group.balanced === false) {
+      return;
+    }
+
+    /*
+     * Gerador desequilibrado: Y é livre; em Δ, V_CA acompanha
+     * V_AB e V_BC (soma das três tem de ser zero).
+     */
+    if (members[0].group?.kind === "source" && members[0].group.balanced === false) {
+      if (members[0].group.connection === "D") {
+        const ab = members.find((m) => m.group?.role === "A");
+        const bc = members.find((m) => m.group?.role === "B");
+        const ca = members.find((m) => m.group?.role === "C");
+
+        if (ab && bc && ca) {
+          const closed = closeDeltaLoop(
+            { value: ab.value, phase: ab.phase ?? 0 },
+            { value: bc.value, phase: bc.phase ?? 0 }
+          );
+
+          if (
+            Math.abs(ca.value - closed.value) > 1e-9 ||
+            Math.abs((ca.phase ?? 0) - closed.phase) > 1e-6
+          ) {
+            updates.set(ca.id, { ...ca, value: closed.value, phase: closed.phase });
+          }
+        }
+      }
       return;
     }
 

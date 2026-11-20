@@ -49,8 +49,9 @@ export interface ThreePhaseGroup {
   /* Só para geradores. Ausente = ABC (sequência positiva). */
   sequence?: "ABC" | "ACB";
   /*
-   * Só para cargas: false = desequilibrada (cada fase com a sua Z).
-   * Ausente = equilibrada.
+   * false = desequilibrado. Carga: cada fase com a sua Z. Gerador:
+   * cada fonte com módulo e ângulo próprios (em Δ, V_CA segue
+   * −(V_AB + V_BC) pela LKT). Ausente = equilibrado.
    */
   balanced?: boolean;
 }
