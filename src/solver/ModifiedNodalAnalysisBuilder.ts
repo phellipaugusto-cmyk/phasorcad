@@ -213,6 +213,9 @@ function getNodeVoltageVariableId(
   return `V(${nodeId})`;
 }
 
+/* Sinal do termo de Rint conforme a orientação da corrente I. */
+const INTERNAL_RESISTANCE_SIGN = -1;
+
 function stampVoltageSource(
   matrix: MnaMatrixRow[],
   rightHandSide:
@@ -298,7 +301,26 @@ function stampVoltageSource(
    *
    * Para V1:left = GND e V1:right = N0:
    * V(N0) = +Vs.
+   *
+   * Resistência interna (opcional): V(to) − V(from) − Rint·I = Vs
+   * (sinal conforme a orientação da variável I). Permite fontes em
+   * malha (gerador em Δ) sem matriz singular.
    */
+  const internalResistance =
+    source.internalResistance;
+
+  if (
+    typeof internalResistance === "number" &&
+    Number.isFinite(internalResistance) &&
+    internalResistance > 0
+  ) {
+    addRealValue(
+      matrix[sourceRowIndex]
+        .values[sourceRowIndex],
+      INTERNAL_RESISTANCE_SIGN * internalResistance
+    );
+  }
+
   const phasor =
     getSourcePhasor(source);
 

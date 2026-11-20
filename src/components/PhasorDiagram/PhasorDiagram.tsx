@@ -46,6 +46,7 @@ const COLORS: Record<
   lamp: "#ca8a04",
   switch: "#475569",
   contactor: "#7c3aed",
+  impedance: "#0f766e",
 };
 
 const UNITS: Record<

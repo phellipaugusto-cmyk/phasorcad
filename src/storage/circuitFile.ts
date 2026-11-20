@@ -79,6 +79,13 @@ export function serializeCircuit(
                 ...(element.momentary ? { momentary: true } : {}),
               }
             : {}),
+          ...(element.type === "impedance" && element.impedance
+            ? { impedance: element.impedance }
+            : {}),
+          ...(element.internalResistance
+            ? { internalResistance: element.internalResistance }
+            : {}),
+          ...(element.group ? { group: element.group } : {}),
           ...(element.type === "contactor" && element.contactor
             ? {
                 contactor: element.contactor,

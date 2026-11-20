@@ -650,6 +650,11 @@ export function Canvas({
       element.id
     );
 
+    /* Impedância: R e X se editam nas propriedades. */
+    if (element.type === "impedance") {
+      return;
+    }
+
     /* Duplo clique no interruptor liga/desliga em vez de editar. */
     if (element.type === "switch") {
       /* Contato de contator: o estado vem da bobina. */

@@ -1,6 +1,8 @@
 import { getMotorParameters } from "../core/motorModel";
 import { getLampRatedVoltage } from "../core/lampModel";
 import { getContactorParameters } from "../core/contactorModel";
+import { getImpedanceParameters } from "../core/impedanceModel";
+import type { ThreePhaseGroup } from "../core/CircuitElement";
 import type {
   CircuitElement,
   CircuitElementType,
@@ -39,6 +41,7 @@ const validElementTypes:
     "lamp",
     "switch",
     "contactor",
+    "impedance",
   ];
 
 function isElementType(
@@ -50,6 +53,34 @@ function isElementType(
       value as CircuitElementType
     )
   );
+}
+
+/* Bloco trifásico: só aceita a estrutura completa e válida. */
+function sanitizeGroup(raw: unknown): ThreePhaseGroup | undefined {
+  if (typeof raw !== "object" || raw === null) {
+    return undefined;
+  }
+
+  const g = raw as Record<string, unknown>;
+
+  if (
+    typeof g.id !== "string" ||
+    (g.kind !== "source" && g.kind !== "load") ||
+    (g.connection !== "Y" && g.connection !== "D") ||
+    (g.role !== "A" && g.role !== "B" && g.role !== "C")
+  ) {
+    return undefined;
+  }
+
+  return {
+    id: g.id,
+    kind: g.kind,
+    connection: g.connection,
+    role: g.role,
+    ...(g.kind === "source"
+      ? { sequence: g.sequence === "ACB" ? "ACB" : "ABC" }
+      : {}),
+  };
 }
 
 /* Leituras de bancada: só números finitos; nada válido = ausente. */
@@ -160,6 +191,18 @@ export function migrateElement(
             : {}),
           ...(candidate.momentary === true ? { momentary: true } : {}),
         }
+      : {}),
+    ...(candidate.type === "impedance"
+      ? { impedance: getImpedanceParameters(candidate) }
+      : {}),
+    ...(candidate.type === "source" &&
+    typeof candidate.internalResistance === "number" &&
+    Number.isFinite(candidate.internalResistance) &&
+    candidate.internalResistance > 0
+      ? { internalResistance: candidate.internalResistance }
+      : {}),
+    ...(sanitizeGroup(candidate.group)
+      ? { group: sanitizeGroup(candidate.group) }
       : {}),
     ...(candidate.type === "contactor"
       ? {

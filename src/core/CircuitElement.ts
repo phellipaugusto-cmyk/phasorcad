@@ -10,6 +10,7 @@ export type CircuitElementType =
   | "lamp"
   | "switch"
   | "contactor"
+  | "impedance"
   | "source"
   | "currentSource";
 
@@ -24,6 +25,29 @@ export function isSourceType(
     type === "source" ||
     type === "currentSource"
   );
+}
+
+export type ThreePhaseRole = "A" | "B" | "C";
+
+/*
+ * Membro de um bloco trifásico equilibrado (gerador ou carga em
+ * Y ou Δ). Os três membros de um bloco compartilham `id`.
+ *
+ *   Gerador Y: fonte de cada fase, terminal esq. = neutro,
+ *              dir. = linha (role).
+ *   Gerador Δ: role A = V_AB (dir. = A, esq. = B), B = V_BC,
+ *              C = V_CA.
+ *   Carga Y:   impedância de cada fase, esq. = linha, dir. = neutro.
+ *   Carga Δ:   role A = Z_AB (esq. = A, dir. = B), B = Z_BC,
+ *              C = Z_CA.
+ */
+export interface ThreePhaseGroup {
+  id: string;
+  kind: "source" | "load";
+  connection: "Y" | "D";
+  role: ThreePhaseRole;
+  /* Só para geradores. Ausente = ABC (sequência positiva). */
+  sequence?: "ABC" | "ACB";
 }
 
 export interface MeasuredReadings {
@@ -119,6 +143,26 @@ export interface CircuitElement {
    * todas eficazes.
    */
   measured?: MeasuredReadings;
+
+  /*
+   * Impedância genérica Z = R + jX (só para type "impedance"),
+   * com X dado em 60 Hz: X > 0 (indutiva) cresce com f, X < 0
+   * (capacitiva) cai com 1/f. `value` guarda |Z| em 60 Hz.
+   */
+  impedance?: {
+    resistance: number;
+    reactance: number;
+  };
+
+  /*
+   * Resistência interna de uma fonte de tensão (Ω). Necessária
+   * para um gerador em Δ (três fontes ideais em malha não têm
+   * solução única). Ausente = fonte ideal.
+   */
+  internalResistance?: number;
+
+  /* Bloco trifásico a que este componente pertence. */
+  group?: ThreePhaseGroup;
 
   x: number;
 

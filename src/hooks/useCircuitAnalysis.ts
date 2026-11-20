@@ -66,6 +66,9 @@ import {
 import {
   resolveContactors,
 } from "../solver/contactorResolver";
+import {
+  analyzeThreePhase,
+} from "../solver/threePhaseAnalysis";
 
 function createEmptyResult(): CircuitResult {
   return {
@@ -305,6 +308,11 @@ export function useCircuitAnalysis(
       resolvedElements: elements,
       coilStates: contactorResolution.coilStates,
       contactorsConverged: contactorResolution.converged,
+      threePhase: analyzeThreePhase(
+        elements,
+        mnaElectricalResults,
+        frequency
+      ),
     };
   }, [editorElements, connections, frequency, sourceVoltage]);
 }

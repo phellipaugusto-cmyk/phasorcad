@@ -14,6 +14,9 @@ interface ToolboxProps {
   onAddSwitch: () => void;
   onAddContactor: () => void;
   onAddPushButton: () => void;
+  onAddImpedance: () => void;
+  onAddThreePhaseSource: () => void;
+  onAddThreePhaseLoad: () => void;
   onLoadBenchPreset: () => void;
   /* Só no celular: abre a página de análise. */
   onExportReport?: () => void;
@@ -88,6 +91,26 @@ const ICONS = {
       <circle cx="23" cy="14" r="1.6" />
     </Icon>
   ),
+  impedance: (
+    <Icon>
+      <path d="M2 14 h7 M23 14 h7" />
+      <rect x="9" y="9" width="14" height="10" />
+    </Icon>
+  ),
+  threePhaseSource: (
+    <Icon>
+      <circle cx="13" cy="13" r="9" />
+      <path d="M7 13 q3 -5 6 0 t6 0" />
+      <text x="31" y="27" fontSize="8" textAnchor="end" stroke="none" fill="currentColor">3φ</text>
+    </Icon>
+  ),
+  threePhaseLoad: (
+    <Icon>
+      <path d="M12 3 v9 M12 12 l-8 9 M12 12 l8 9" />
+      <circle cx="12" cy="12" r="1.6" />
+      <text x="31" y="27" fontSize="8" textAnchor="end" stroke="none" fill="currentColor">3φ</text>
+    </Icon>
+  ),
   pushButton: (
     <Icon>
       <path d="M2 20 h8 M22 20 h8 M10 20 h12 M16 20 v-9 M11 8 h10" />
@@ -121,6 +144,9 @@ export function Toolbox({
   onAddSwitch,
   onAddContactor,
   onAddPushButton,
+  onAddImpedance,
+  onAddThreePhaseSource,
+  onAddThreePhaseLoad,
   onLoadBenchPreset,
   onExportReport,
   onOpenAnalysis,
@@ -154,6 +180,9 @@ export function Toolbox({
         {part(ICONS.motor, "Motor", onAddMotor, "Adicionar um Motor (carga por dados de placa)")}
         {part(ICONS.lamp, "Lâmpada", onAddLamp, "Adicionar uma Lâmpada incandescente (resistiva)")}
         {part(ICONS.switch, "Interruptor", onAddSwitch, "Adicionar um Interruptor (duplo clique liga/desliga)")}
+        {part(ICONS.impedance, "Impedância", onAddImpedance, "Adicionar uma Impedância Z = R + jX")}
+        {part(ICONS.threePhaseSource, "Gerador 3φ", onAddThreePhaseSource, "Adicionar um Gerador trifásico equilibrado (Y ou Δ)")}
+        {part(ICONS.threePhaseLoad, "Carga 3φ", onAddThreePhaseLoad, "Adicionar uma Carga trifásica equilibrada (Y ou Δ)")}
         {part(ICONS.pushButton, "Botoeira", onAddPushButton, "Adicionar uma Botoeira (pulso; duplo clique pressiona)")}
         {part(ICONS.contactor, "Contator", onAddContactor, "Adicionar um Contator (bobina + contato NA comandado)")}
         <span className="tb-sep tb-files" />

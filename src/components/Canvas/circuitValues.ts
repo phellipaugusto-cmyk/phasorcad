@@ -1,3 +1,7 @@
+import {
+  formatImpedance,
+  getImpedanceParameters,
+} from "../../core/impedanceModel";
 import type { CircuitElement } from "../../core/CircuitElement";
 import type {
   CircuitTerminal,
@@ -6,6 +10,10 @@ import type {
 
 /* Texto do valor de um componente, com o estado do interruptor. */
 export function formatElementValue(element: CircuitElement): string {
+  if (element.type === "impedance") {
+    return formatImpedance(getImpedanceParameters(element));
+  }
+
   if (element.type === "switch") {
     const state = element.closed === false ? "aberto" : "fechado";
 
@@ -47,10 +55,13 @@ export function formatValue(
       return "";
     case "contactor":
       return `${Number(value.toPrecision(4))} VA`;
+    case "impedance":
+      return `|Z| ${Number(value.toPrecision(4))} Ω`;
+    /* 5 algarismos: 220/√3 aparece como 127,02 V, não 127,0170592… */
     case "source":
-      return `${value} V${angle}`;
+      return `${Number(value.toPrecision(5))} V${angle}`;
     case "currentSource":
-      return `${value} A${angle}`;
+      return `${Number(value.toPrecision(5))} A${angle}`;
     default:
       return `${value}`;
   }
@@ -86,6 +97,8 @@ export function convertEditValue(
       return 0;
     case "contactor":
       return Math.max(value, 0.1);
+    case "impedance":
+      return value;
     case "source":
     case "currentSource":
       return Math.max(value, 0);
@@ -110,6 +123,8 @@ export function getSymbol(type: CircuitElement["type"]): string {
       return "_/ _";
     case "contactor":
       return "[K]";
+    case "impedance":
+      return "[Z]";
     case "source":
       return "(~)";
     case "currentSource":

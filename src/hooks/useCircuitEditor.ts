@@ -14,7 +14,28 @@ import type { SwitchControlChange } from "../components/Properties/SwitchFields"
 import type { MeasuredReadings } from "../core/CircuitElement";
 import { createBenchPreset } from "../data/benchPreset";
 import {
+  createThreePhasePreset,
+  THREE_PHASE_PRESET_IMPEDANCE,
+  THREE_PHASE_PRESET_LINE_VOLTAGE,
+  type ThreePhasePresetKind,
+} from "../data/threePhasePresets";
+import {
+  createThreePhaseLoad,
+  createThreePhaseSource,
+  enforceBalance,
+  getGroupIds,
+  getGroupMembers,
+  rebuildGroup,
+} from "../core/threePhase";
+import {
+  IMPEDANCE_DEFAULTS,
+  getImpedanceMagnitude,
+  getImpedanceParameters,
+  type ImpedanceParameters,
+} from "../core/impedanceModel";
+import {
   useEffect,
+  useCallback,
   useState,
 } from "react";
 
@@ -70,11 +91,30 @@ const PULSE_MS = 500;
 export function useCircuitEditor() {
   const [
     elements,
-    setElements,
+    setRawElements,
   ] =
     useState<CircuitElement[]>(
       loadElements
     );
+
+  /*
+   * Toda alteração passa por enforceBalance: um bloco trifásico
+   * editado num membro tem os outros dois igualados.
+   */
+  const setElements = useCallback(
+    (
+      update:
+        | CircuitElement[]
+        | ((current: CircuitElement[]) => CircuitElement[])
+    ) =>
+      setRawElements((current) =>
+        enforceBalance(
+          current,
+          typeof update === "function" ? update(current) : update
+        )
+      ),
+    []
+  );
 
   const [
     connections,
@@ -201,11 +241,31 @@ export function useCircuitEditor() {
     }
   );
 
+  /*
+   * Bloco trifásico: protegido só se houver fio externo (os fios
+   * internos da estrela/triângulo não contam).
+   */
+  const selectedGroupMemberIds = selectedElement?.group
+    ? new Set(
+        getGroupMembers(elements, selectedElement.group.id).map((m) => m.id)
+      )
+    : null;
+
   const selectedElementIsProtected =
     selectedElement
-      ? connectedElementIds.has(
-          selectedElement.id
-        )
+      ? selectedGroupMemberIds
+        ? connections.some(
+            (connection) =>
+              selectedGroupMemberIds.has(
+                getElementIdFromTerminalId(connection.fromTerminalId)
+              ) !==
+              selectedGroupMemberIds.has(
+                getElementIdFromTerminalId(connection.toTerminalId)
+              )
+          )
+        : connectedElementIds.has(
+            selectedElement.id
+          )
       : false;
 
   function newCircuit() {
@@ -679,6 +739,7 @@ export function useCircuitEditor() {
       lamp: "LP",
       switch: "S",
       contactor: "K",
+      impedance: "Z",
     };
 
     const prefix =
@@ -872,6 +933,162 @@ export function useCircuitEditor() {
     );
   }
 
+  /* Próximo id livre de bloco trifásico: G1, G2… / CG1, CG2… */
+  function getNextGroupId(prefix: string): string {
+    const used = new Set(getGroupIds(elements));
+    let n = 1;
+    while (used.has(`${prefix}${n}`)) n++;
+    return `${prefix}${n}`;
+  }
+
+  function addGroup(
+    created: { elements: CircuitElement[]; connections: CircuitConnection[] }
+  ) {
+    setElements((current) => [...current, ...created.elements]);
+    setConnections((current) => [...current, ...created.connections]);
+    setSelectedConnectionId(null);
+    setSelectedElementId(created.elements[0]?.id ?? null);
+    setEditingElementId(null);
+  }
+
+  /* Gerador trifásico equilibrado (Y, 220 V de linha, ABC). */
+  function addThreePhaseSource() {
+    const groupId = getNextGroupId("G");
+    const position = getNewElementPosition();
+
+    addGroup(
+      createThreePhaseSource({
+        groupId,
+        connection: "Y",
+        lineVoltage: THREE_PHASE_PRESET_LINE_VOLTAGE,
+        label: `Gerador ${groupId.slice(1)}`,
+        ...position,
+      })
+    );
+  }
+
+  /* Carga trifásica equilibrada (Y, 8 + j6 Ω por fase). */
+  function addThreePhaseLoad() {
+    const groupId = getNextGroupId("CG");
+    const position = getNewElementPosition();
+
+    addGroup(
+      createThreePhaseLoad({
+        groupId,
+        connection: "Y",
+        impedance: THREE_PHASE_PRESET_IMPEDANCE,
+        label: `Carga ${groupId.slice(2)}`,
+        ...position,
+      })
+    );
+  }
+
+  function addImpedance() {
+    addElement("impedance", getImpedanceMagnitude(IMPEDANCE_DEFAULTS));
+  }
+
+  /* R e X (Ω, X em 60 Hz) da impedância selecionada. */
+  function updateSelectedImpedance(changes: Partial<ImpedanceParameters>) {
+    if (selectedElement?.type !== "impedance") {
+      return;
+    }
+
+    const elementId = selectedElement.id;
+    const current = getImpedanceParameters(selectedElement);
+    const next: ImpedanceParameters = {
+      resistance:
+        changes.resistance !== undefined &&
+        Number.isFinite(changes.resistance) &&
+        changes.resistance >= 0
+          ? changes.resistance
+          : current.resistance,
+      reactance:
+        changes.reactance !== undefined && Number.isFinite(changes.reactance)
+          ? changes.reactance
+          : current.reactance,
+    };
+
+    if (getImpedanceMagnitude(next) === 0) {
+      return;
+    }
+
+    setElements((currentElements) =>
+      currentElements.map((element) =>
+        element.id === elementId
+          ? { ...element, impedance: next, value: getImpedanceMagnitude(next) }
+          : element
+      )
+    );
+  }
+
+  /*
+   * Bloco trifásico do componente selecionado: ligação (Y/Δ),
+   * sequência e tensão de linha do gerador.
+   */
+  function updateSelectedGroup(changes: {
+    connection?: "Y" | "D";
+    sequence?: "ABC" | "ACB";
+    lineVoltage?: number;
+  }) {
+    const group = selectedElement?.group;
+
+    if (!group) {
+      return;
+    }
+
+    if (changes.lineVoltage !== undefined) {
+      const volts = changes.lineVoltage;
+
+      if (!Number.isFinite(volts) || volts <= 0 || group.kind !== "source") {
+        return;
+      }
+
+      const phaseValue = group.connection === "Y" ? volts / Math.sqrt(3) : volts;
+
+      setElements((currentElements) =>
+        currentElements.map((element) =>
+          element.group?.id === group.id ? { ...element, value: phaseValue } : element
+        )
+      );
+      return;
+    }
+
+    if (changes.connection === undefined && changes.sequence === undefined) {
+      return;
+    }
+
+    const selectedRole = group.role;
+    const rebuilt = rebuildGroup(elements, connections, group.id, changes);
+    const newSelected = getGroupMembers(rebuilt.elements, group.id).find(
+      (member) => member.group?.role === selectedRole
+    );
+
+    setElements(rebuilt.elements);
+    setConnections(rebuilt.connections);
+    setSelectedElementId(newSelected?.id ?? null);
+  }
+
+  /* Abre um exemplo trifásico (Y-Y, Y-Δ, Δ-Y, Δ-Δ). */
+  function loadThreePhasePreset(kind: ThreePhasePresetKind) {
+    const shouldOpen = window.confirm(
+      "Abrir o exemplo trifásico? O circuito atual será substituído."
+    );
+
+    if (!shouldOpen) {
+      return;
+    }
+
+    const preset = createThreePhasePreset(kind);
+
+    setElements(preset.elements);
+    setConnections(preset.connections);
+    setFrequency(preset.frequency);
+    setSourceVoltage(preset.elements[0]?.value ?? 0);
+    setSelectedElementId(null);
+    setSelectedConnectionId(null);
+    setEditingElementId(null);
+  }
+
   /* Botoeira NA (pulso). */
   function addPushButton() {
     const id = getNextElementId("switch");
@@ -938,6 +1155,40 @@ export function useCircuitEditor() {
 
   function removeSelectedElement() {
     if (!selectedElement) {
+      return;
+    }
+
+    /*
+     * Membro de bloco trifásico: remove o bloco inteiro (com os
+     * fios internos), desde que nenhum fio externo esteja ligado.
+     */
+    if (selectedElement.group) {
+      const groupId = selectedElement.group.id;
+      const memberIds = new Set(
+        getGroupMembers(elements, groupId).map((member) => member.id)
+      );
+      const touches = (connection: CircuitConnection) => [
+        memberIds.has(getElementIdFromTerminalId(connection.fromTerminalId)),
+        memberIds.has(getElementIdFromTerminalId(connection.toTerminalId)),
+      ];
+      const hasExternal = connections.some((connection) => {
+        const [from, to] = touches(connection);
+        return from !== to;
+      });
+
+      if (hasExternal) {
+        return;
+      }
+
+      setElements((current) => current.filter((e) => !memberIds.has(e.id)));
+      setConnections((current) =>
+        current.filter((connection) => {
+          const [from, to] = touches(connection);
+          return !from && !to;
+        })
+      );
+      setSelectedElementId(null);
+      setEditingElementId(null);
       return;
     }
 
@@ -1079,6 +1330,9 @@ export function useCircuitEditor() {
       case "contactor":
         return "VA";
 
+      case "impedance":
+        return "Ω";
+
       default:
         return "";
     }
@@ -1138,6 +1392,9 @@ export function useCircuitEditor() {
         break;
 
       case "switch":
+        return;
+
+      case "impedance":
         return;
 
       case "contactor":
@@ -1230,6 +1487,12 @@ export function useCircuitEditor() {
     updateSelectedContactor,
     addContactor,
     addPushButton,
+    addThreePhaseSource,
+    addThreePhaseLoad,
+    addImpedance,
+    updateSelectedImpedance,
+    updateSelectedGroup,
+    loadThreePhasePreset,
     pulseSwitch,
     syncCoilStates,
     removeSelectedElement,

@@ -30,6 +30,11 @@ import {
   SWEEP_MIN_HZ,
 } from "../components/FrequencySweep/frequencySweepData";
 import {
+  analyzeThreePhase,
+  type ThreePhaseGroupAnalysis,
+} from "../solver/threePhaseAnalysis";
+import { formatImpedance } from "../core/impedanceModel";
+import {
   CONTENT_W,
   MARGIN,
   PAGE_H,
@@ -61,6 +66,7 @@ const TYPE_NAMES: Record<string, string> = {
   lamp: "Lâmpada",
   switch: "Interruptor",
   contactor: "Bobina de contator",
+  impedance: "Impedância",
 };
 
 const COLORS: Record<string, string> = {
@@ -73,6 +79,7 @@ const COLORS: Record<string, string> = {
   lamp: "#ca8a04",
   switch: "#475569",
   contactor: "#7c3aed",
+  impedance: "#0f766e",
 };
 
 const STATE_TEXT: Record<string, string> = {
@@ -360,6 +367,16 @@ function drawSchematic(
         seg(0, 24);
         seg(56, 80);
         seg(24, 56, 0, element.closed === false ? -16 : 0);
+        break;
+      }
+      case "impedance": {
+        /* Retângulo (impedância genérica). */
+        seg(0, 22);
+        seg(58, 80);
+        seg(22, 58, -8, -8);
+        seg(22, 58, 8, 8);
+        seg(22, 22, -8, 8);
+        seg(58, 58, -8, 8);
         break;
       }
       case "contactor": {
@@ -760,6 +777,52 @@ export async function buildCircuitReport(
       pdf.text(label, MARGIN, pdf.cursor, { size: 9.5, bold: true, color: "#374151" });
       pdf.text(value, MARGIN + 150, pdf.cursor, { size: 9.5 });
     });
+
+    /* ---------- 2.1 Trifásico ---------- */
+    const threePhase = analyzeThreePhase(elements, results, input.frequency);
+
+    if (threePhase.length > 0) {
+      pdf.cursor += 6;
+      pdf.heading("2.1 Análise trifásica (equilibrada)");
+
+      const pct = (value: number, digits = 2) =>
+        fmt(value, digits).replace(/^-/, "−");
+      const ratioText = (r: { magnitude: number; angle: number } | null) =>
+        r ? `${pct(r.magnitude, 3)} ∠${pct(r.angle, 1)}°` : "—";
+      const z = (p: { resistance: number; reactance: number } | null) =>
+        p ? formatImpedance(p, true) : "—";
+
+      const rows: [string, (g: ThreePhaseGroupAnalysis) => string][] = [
+        ["Ligação", (g) => `${g.kind === "load" ? "Carga" : "Gerador"} em ${g.connection === "Y" ? "Y" : "Δ"}${g.kind === "source" ? ` (${g.sequence})` : ""}`],
+        ["Tensão de fase / de linha (V)", (g) => `${pct(g.phaseVoltage)} / ${pct(g.lineVoltage)}`],
+        ["Corrente de fase / de linha (A)", (g) => `${pct(g.phaseCurrent, 3)} / ${pct(g.lineCurrent, 3)}`],
+        ["V_AB / V_AN (só Y)", (g) => (g.connection === "Y" ? ratioText(g.voltageRatio) : "—")],
+        ["I_A / I_AB (só Δ)", (g) => (g.connection === "D" ? ratioText(g.currentRatio) : "—")],
+        ["P total (W)", (g) => pct(g.activePower, 1)],
+        ["Q total (var)", (g) => pct(g.reactivePower, 1)],
+        ["S total (VA) / FP", (g) => `${pct(g.apparentPower, 1)} / ${pct(g.powerFactor, 3)}`],
+        ["√3·V_L·I_L·FP (W)", (g) => pct(g.formulaPower, 1)],
+        ["Corrente no neutro (A)", (g) => (g.neutralCurrent === null ? "—" : pct(g.neutralCurrent, 4))],
+        ["Z por fase", (g) => z(g.impedance)],
+        ["Equivalente (Z_Δ = 3·Z_Y)", (g) => z(g.equivalentImpedance)],
+      ];
+
+      const labelWidth = 150;
+      const colWidth = (CONTENT_W - labelWidth) / threePhase.length;
+
+      pdf.table(
+        [
+          { title: "Grandeza", width: labelWidth },
+          ...threePhase.map((g) => ({ title: g.name, width: colWidth, align: "right" as const })),
+        ],
+        rows.map(([label, value]) => [label, ...threePhase.map(value)])
+      );
+
+      pdf.paragraph(
+        "Gerador: potências entregues; carga: absorvidas. Em Y, I_L = I_F e V_L = √3·V_F ∠±30°; em Δ, V_L = V_F e I_L = √3·I_F ∠∓30° (sinal superior para a sequência ABC).",
+        { size: 8, color: "#6b7280" }
+      );
+    }
 
     /* ---------- 3. Componentes ---------- */
     pdf.heading("3. Tensões, correntes e potências por componente");

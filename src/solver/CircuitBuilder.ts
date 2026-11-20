@@ -1,6 +1,7 @@
 import { getMotorEquivalent } from "../core/motorModel";
 import { getLampResistance } from "../core/lampModel";
 import { getContactorAdmittance } from "../core/contactorModel";
+import { getImpedanceAt } from "../core/impedanceModel";
 import type { Circuit } from "../core/Circuit";
 
 import { Complex } from "../math/Complex";
@@ -89,6 +90,16 @@ export class CircuitBuilder {
           if (resistance) {
             impedances.push(new Complex(resistance, 0));
           }
+
+          break;
+
+        }
+
+        case "impedance": {
+
+          const z = getImpedanceAt(element, frequency);
+
+          impedances.push(new Complex(z.resistance, z.reactance));
 
           break;
 

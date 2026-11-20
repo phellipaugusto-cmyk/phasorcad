@@ -15,6 +15,10 @@ import { MeasurementComparisonPanel } from "./components/ResultsPanel/Measuremen
 import { LampFields } from "./components/Properties/LampFields";
 import { SwitchFields } from "./components/Properties/SwitchFields";
 import { ContactorFields } from "./components/Properties/ContactorFields";
+import { ImpedanceFields } from "./components/Properties/ImpedanceFields";
+import { ThreePhaseFields } from "./components/Properties/ThreePhaseFields";
+import { ThreePhasePanel } from "./components/ResultsPanel/ThreePhasePanel";
+import { getGroupMembers } from "./core/threePhase";
 import { MeasuredFields } from "./components/Properties/MeasuredFields";
 import { PhasorDiagram } from "./components/PhasorDiagram/PhasorDiagram";
 import { FrequencySweepPanel } from "./components/FrequencySweep/FrequencySweepPanel";
@@ -64,6 +68,12 @@ function App() {
     updateSelectedContactor,
     addContactor,
     addPushButton,
+    addThreePhaseSource,
+    addThreePhaseLoad,
+    addImpedance,
+    updateSelectedImpedance,
+    updateSelectedGroup,
+    loadThreePhasePreset,
     pulseSwitch,
     syncCoilStates,
     removeSelectedElement,
@@ -92,6 +102,7 @@ function App() {
     resolvedElements,
     coilStates,
     contactorsConverged,
+    threePhase,
   } = useCircuitAnalysis(
     elements,
     connections,
@@ -266,7 +277,7 @@ function App() {
                 onPulse={() => pulseSwitch(selectedElement.id)}
                 onControlChange={updateSelectedSwitchControl}
               />
-            ) : (
+            ) : selectedElement.type === "impedance" ? null : (
             <div
               style={{
                 marginTop:
@@ -326,6 +337,20 @@ function App() {
               {getUnit()}
             </div>
             )}
+            {selectedElement.group ? (
+              <ThreePhaseFields
+                element={selectedElement}
+                members={getGroupMembers(elements, selectedElement.group.id)}
+                onChange={updateSelectedGroup}
+              />
+            ) : null}
+            {selectedElement.type === "impedance" ? (
+              <ImpedanceFields
+                element={selectedElement}
+                frequency={frequency}
+                onChange={updateSelectedImpedance}
+              />
+            ) : null}
             {selectedElement.type === "contactor" ? (
               <ContactorFields
                 element={selectedElement}
@@ -519,6 +544,7 @@ function App() {
         setFrequency={setFrequency}
         onNewCircuit={newCircuit}
         onLoadBenchPreset={loadBenchPreset}
+        onLoadThreePhasePreset={loadThreePhasePreset}
         onSaveCircuit={saveCircuitToFile}
         onOpenCircuit={openCircuitFile}
         onExportReport={exportReport}
@@ -554,6 +580,9 @@ function App() {
           onAddSwitch={addSwitch}
           onAddContactor={addContactor}
           onAddPushButton={addPushButton}
+          onAddImpedance={addImpedance}
+          onAddThreePhaseSource={addThreePhaseSource}
+          onAddThreePhaseLoad={addThreePhaseLoad}
           onLoadBenchPreset={loadBenchPreset}
           onExportReport={exportReport}
           onOpenAnalysis={() => setView("analysis")}
@@ -757,6 +786,8 @@ function App() {
           connections={connections}
           frequency={frequency}
         />
+
+        <ThreePhasePanel groups={threePhase} />
 
         <MeasurementComparisonPanel
           elements={resolvedElements}

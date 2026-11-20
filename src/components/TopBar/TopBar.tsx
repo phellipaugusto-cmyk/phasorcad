@@ -1,3 +1,7 @@
+import {
+  THREE_PHASE_PRESETS,
+  type ThreePhasePresetKind,
+} from "../../data/threePhasePresets";
 import { useState } from "react";
 
 interface TopBarProps {
@@ -10,6 +14,7 @@ interface TopBarProps {
   setFrequency: (value: number) => void;
   onNewCircuit: () => void;
   onLoadBenchPreset: () => void;
+  onLoadThreePhasePreset: (kind: ThreePhasePresetKind) => void;
   onSaveCircuit: () => void;
   onOpenCircuit: (file: File) => void;
   onExportReport: () => void;
@@ -26,6 +31,7 @@ export function TopBar({
   setFrequency,
   onNewCircuit,
   onLoadBenchPreset,
+  onLoadThreePhasePreset,
   onSaveCircuit,
   onOpenCircuit,
   onExportReport,
@@ -125,6 +131,18 @@ export function TopBar({
               >
                 Exemplo: Bancada
               </button>
+              {THREE_PHASE_PRESETS.map((preset) => (
+                <button
+                  key={preset.kind}
+                  type="button"
+                  onClick={() => {
+                    setOpen(null);
+                    onLoadThreePhasePreset(preset.kind);
+                  }}
+                >
+                  Exemplo: {preset.title}
+                </button>
+              ))}
               <button
                 type="button"
                 onClick={() => {

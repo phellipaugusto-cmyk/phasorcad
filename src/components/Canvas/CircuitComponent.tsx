@@ -153,6 +153,22 @@ function ElementSymbol({
         </>
       ) : null}
 
+      {type === "impedance" ? (
+        <>
+          <path
+            {...common}
+            d="M 0 40 L 22 40 M 58 40 L 80 40"
+          />
+          <rect
+            {...common}
+            x={22}
+            y={32}
+            width={36}
+            height={16}
+          />
+        </>
+      ) : null}
+
       {type === "contactor" ? (
         <>
           <path
