@@ -48,6 +48,11 @@ export interface ThreePhaseGroup {
   role: ThreePhaseRole;
   /* Só para geradores. Ausente = ABC (sequência positiva). */
   sequence?: "ABC" | "ACB";
+  /*
+   * Só para cargas: false = desequilibrada (cada fase com a sua Z).
+   * Ausente = equilibrada.
+   */
+  balanced?: boolean;
 }
 
 export interface MeasuredReadings {

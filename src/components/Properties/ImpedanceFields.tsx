@@ -39,7 +39,11 @@ export function ImpedanceFields({ element, frequency, onChange }: ImpedanceField
         Em {fmt(frequency, 1)} Hz: Z = {formatImpedance(atF, true)} = {fmt(magnitude)} Ω ∠
         {fmt(angle, 1)}°, FP = {fmt(magnitude > 0 ? atF.resistance / magnitude : 1)}
         {atF.reactance > 0 ? " indutivo" : atF.reactance < 0 ? " capacitivo" : ""}.
-        {element.group ? " Vale para as três fases do bloco." : ""}
+        {element.group
+          ? element.group.balanced === false
+            ? " Só esta fase (carga desequilibrada)."
+            : " Vale para as três fases do bloco."
+          : ""}
       </p>
     </div>
   );

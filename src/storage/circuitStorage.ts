@@ -79,7 +79,9 @@ function sanitizeGroup(raw: unknown): ThreePhaseGroup | undefined {
     role: g.role,
     ...(g.kind === "source"
       ? { sequence: g.sequence === "ACB" ? "ACB" : "ABC" }
-      : {}),
+      : g.balanced === false
+        ? { balanced: false }
+        : {}),
   };
 }
 

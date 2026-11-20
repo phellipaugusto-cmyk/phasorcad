@@ -43,14 +43,14 @@ const VF = 220 / Math.sqrt(3);
 const Z = 10;
 const PF = 0.8;
 
-const expected: Record<ThreePhasePresetKind, { vfLoad: number; ifLoad: number; il: number; p: number }> = {
+const expected: Record<Extract<ThreePhasePresetKind, "YY" | "YD" | "DY" | "DD">, { vfLoad: number; ifLoad: number; il: number; p: number }> = {
   YY: { vfLoad: VF, ifLoad: VF / Z, il: VF / Z, p: 3 * (VF ** 2) * PF / Z },
   DY: { vfLoad: VF, ifLoad: VF / Z, il: VF / Z, p: 3 * (VF ** 2) * PF / Z },
   YD: { vfLoad: 220, ifLoad: 22, il: 22 * Math.sqrt(3), p: 3 * 220 ** 2 * PF / Z },
   DD: { vfLoad: 220, ifLoad: 22, il: 22 * Math.sqrt(3), p: 3 * 220 ** 2 * PF / Z },
 };
 
-(Object.keys(expected) as ThreePhasePresetKind[]).forEach((kind) => {
+(Object.keys(expected) as (keyof typeof expected)[]).forEach((kind) => {
   console.log(`\n${kind}`);
   const preset = createThreePhasePreset(kind);
   const r = analyze(preset.elements, preset.connections);
@@ -81,7 +81,7 @@ const expected: Record<ThreePhasePresetKind, { vfLoad: number; ifLoad: number; i
 console.log("\nEquivalente Y ↔ Δ");
 {
   const yd = analyze(createThreePhasePreset("YD").elements, createThreePhasePreset("YD").connections);
-  near("Z_Y equivalente de 8+j6 Δ: R", yd.load.equivalentImpedance!.resistance, 8 / 3, 1e-9);
+  near("Z_Y equivalente de 8+j6 Δ: R", yd.load.equivalentImpedances!.A.resistance, 8 / 3, 1e-9);
   // Carga Y com Z_Δ/3 absorve o mesmo que a Δ.
   const yy = createThreePhasePreset("YY");
   const els = yy.elements.map((e) => (e.type === "impedance" ? { ...e, impedance: { resistance: 8 / 3, reactance: 2 } } : e));
@@ -145,6 +145,78 @@ console.log("\nArquivo");
     const r = analyze(els, parsed.data.connections);
     near("mesmo resultado", r.load.lineCurrent, 22 * Math.sqrt(3), 0.02);
   }
+}
+
+console.log("\nDesequilibrado (Z_A = 10, Z_B = 6 + j8, Z_C = 5 − j5 Ω)");
+{
+  type C = { re: number; im: number };
+  const c = (re: number, im = 0): C => ({ re, im });
+  const polar = (m: number, deg: number): C => c(m * Math.cos((deg * Math.PI) / 180), m * Math.sin((deg * Math.PI) / 180));
+  const addc = (a: C, b: C): C => c(a.re + b.re, a.im + b.im);
+  const subc = (a: C, b: C): C => c(a.re - b.re, a.im - b.im);
+  const mulc = (a: C, b: C): C => c(a.re * b.re - a.im * b.im, a.re * b.im + a.im * b.re);
+  const divc = (a: C, b: C): C => { const d = b.re ** 2 + b.im ** 2; return c((a.re * b.re + a.im * b.im) / d, (a.im * b.re - a.re * b.im) / d); };
+  const abs = (a: C) => Math.hypot(a.re, a.im);
+  const V = [polar(VF, 0), polar(VF, -120), polar(VF, 120)];
+  const Zs = [c(10), c(6, 8), c(5, -5)];
+  const one = c(1);
+
+  // Com neutro: cada fase com V_F.
+  const I = V.map((v, k) => divc(v, Zs[k]));
+  const IN = I.reduce(addc);
+  const pWith = I.reduce((sum, i, k) => sum + abs(i) ** 2 * Zs[k].re, 0);
+  const r1 = analyze(createThreePhasePreset("YYn-u").elements, createThreePhasePreset("YYn-u").connections);
+  expect("marcada como desequilibrada", r1.load.balanced === false);
+  near("I_A com neutro (A)", r1.load.lineCurrents.A ? Math.hypot(r1.load.lineCurrents.A.real, r1.load.lineCurrents.A.imaginary) : 0, abs(I[0]), 1e-6);
+  near("I_C com neutro (A)", Math.hypot(r1.load.lineCurrents.C.real, r1.load.lineCurrents.C.imaginary), abs(I[2]), 1e-6);
+  near("I_N = I_A + I_B + I_C (A)", r1.load.neutralCurrent!, abs(IN), 1e-6);
+  near("deslocamento do neutro = 0 com fio de neutro (V)", Math.hypot(r1.load.neutralShift!.real, r1.load.neutralShift!.imaginary), 0, 1e-6);
+  near("P total = Σ I²R (W)", r1.load.activePower, pWith, 1e-3);
+  near("P_A = V²/10 (W)", r1.load.phasePowers.A.real, VF ** 2 / 10, 1e-3);
+  near("Q_C capacitiva (var)", r1.load.phasePowers.C.imaginary, -(abs(I[2]) ** 2) * 5, 1e-3);
+  expect("fator de desequilíbrio > 0", r1.load.unbalanceFactor > 1);
+  near("I₀ = I_N/3 (A)", Math.hypot(r1.load.sequenceCurrents.zero.real, r1.load.sequenceCurrents.zero.imaginary), abs(IN) / 3, 1e-6);
+
+  // Sem neutro: Millman.
+  const Y = Zs.map((z) => divc(one, z));
+  const VnN = divc(V.map((v, k) => mulc(v, Y[k])).reduce(addc), Y.reduce(addc));
+  const In = V.map((v, k) => mulc(subc(v, VnN), Y[k]));
+  const r2 = analyze(createThreePhasePreset("YY-u").elements, createThreePhasePreset("YY-u").connections);
+  expect("sem neutro: circuito resolvido", r2.results.available);
+  near("V_nN (Millman) (V)", Math.hypot(r2.load.neutralShift!.real, r2.load.neutralShift!.imaginary), abs(VnN), 1e-6);
+  near("I_A sem neutro (A)", Math.hypot(r2.load.lineCurrents.A.real, r2.load.lineCurrents.A.imaginary), abs(In[0]), 1e-6);
+  near("I_B sem neutro (A)", Math.hypot(r2.load.lineCurrents.B.real, r2.load.lineCurrents.B.imaginary), abs(In[1]), 1e-6);
+  near("Σ correntes = 0 sem neutro (A)", r2.load.neutralCurrent!, 0, 1e-6);
+  near("V na fase A da carga = |V_AN − V_nN| (V)", Math.hypot(r2.load.phaseVoltages.A.real, r2.load.phaseVoltages.A.imaginary), abs(subc(V[0], VnN)), 1e-6);
+  near("I₀ = 0 sem neutro (A)", Math.hypot(r2.load.sequenceCurrents.zero.real, r2.load.sequenceCurrents.zero.imaginary), 0, 1e-6);
+
+  // Y-Δ: Z_AB, Z_BC, Z_CA.
+  const VL = [polar(220, 30), polar(220, -90), polar(220, 150)];
+  const Iph = VL.map((v, k) => divc(v, Zs[k]));
+  const IA = subc(Iph[0], Iph[2]);
+  const r3 = analyze(createThreePhasePreset("YD-u").elements, createThreePhasePreset("YD-u").connections);
+  near("I_AB (A)", Math.hypot(r3.load.phaseCurrents.A.real, r3.load.phaseCurrents.A.imaginary), abs(Iph[0]), 1e-6);
+  near("I_A = I_AB − I_CA (A)", Math.hypot(r3.load.lineCurrents.A.real, r3.load.lineCurrents.A.imaginary), abs(IA), 1e-6);
+  near("gerador entrega o que a carga absorve (W)", r3.gen.activePower, r3.load.activePower, 0.05);
+
+  // Kennelly: Δ desequilibrado → Y equivalente absorve igual.
+  const eq = r3.load.equivalentImpedances!;
+  const yy = createThreePhasePreset("YY-u");
+  const els = yy.elements.map((e) => (e.group?.kind === "load" ? { ...e, impedance: { ...eq[e.group.role] } } : e));
+  const r4 = analyze(els, yy.connections);
+  near("Y equivalente (Kennelly) absorve o mesmo P (W)", r4.load.activePower, r3.load.activePower, 1e-3);
+  near("e a mesma I_A (A)", Math.hypot(r4.load.lineCurrents.A.real, r4.load.lineCurrents.A.imaginary), abs(IA), 1e-6);
+
+  // Editar uma fase não mexe nas outras; Y→Δ preserva cada Z.
+  const p = createThreePhasePreset("YYn-u");
+  const edited = p.elements.map((e) => (e.id === "CZB" ? { ...e, impedance: { resistance: 1, reactance: 1 } } : e));
+  const kept = enforceBalance(p.elements, edited);
+  expect("desequilibrada: só Z_B muda", kept.find((e) => e.id === "CZA")!.impedance!.resistance === 10 && kept.find((e) => e.id === "CZB")!.impedance!.resistance === 1);
+  const re = rebuildGroup(p.elements, p.connections, "C", { connection: "D" });
+  expect("Y→Δ: Z_AB = antiga Z_A, Z_CA = antiga Z_C", re.elements.find((e) => e.id === "CZAB")!.impedance!.resistance === 10 && re.elements.find((e) => e.id === "CZCA")!.impedance!.reactance === -5);
+  expect("continua desequilibrada", re.elements.find((e) => e.id === "CZBC")!.group!.balanced === false);
+  const parsed = parseCircuitFile(serializeCircuit(p.elements, p.connections, 60));
+  expect("arquivo mantém 'desequilibrada'", parsed.ok && parsed.data.elements.find((e) => e.id === "CZA")!.group!.balanced === false);
 }
 
 console.log(failures === 0 ? "\nTrifásico: todos os testes passaram." : `\nTrifásico: ${failures} FALHA(S).`);

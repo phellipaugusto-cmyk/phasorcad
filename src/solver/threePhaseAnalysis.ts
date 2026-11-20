@@ -57,9 +57,31 @@ export interface ThreePhaseGroupAnalysis {
   formulaPower: number;
   /* Carga Y: corrente que vai para o neutro (≈ 0 se equilibrada). */
   neutralCurrent: number | null;
-  /* Só cargas: Z por fase (na frequência atual) e o equivalente. */
-  impedance: ImpedanceParameters | null;
-  equivalentImpedance: ImpedanceParameters | null;
+  neutralCurrentPhasor: Phasor | null;
+  /* Carga equilibrada (mesma Z nas três fases)? Geradores: true. */
+  balanced: boolean;
+  /* Potência complexa de cada fase (membro). */
+  phasePowers: Record<ThreePhaseRole, Phasor>;
+  /*
+   * Carga Y: tensão do neutro da carga em relação ao neutro do
+   * (primeiro) gerador em Y — o "deslocamento do neutro". Sem fio
+   * de neutro e com carga desequilibrada, deixa de ser zero.
+   */
+  neutralShift: Phasor | null;
+  /*
+   * Componentes simétricas das correntes de linha (Fortescue,
+   * referência na fase A): zero, positiva e negativa, e o fator de
+   * desequilíbrio |I₂|/|I₁| (em %).
+   */
+  sequenceCurrents: { zero: Phasor; positive: Phasor; negative: Phasor };
+  unbalanceFactor: number;
+  /*
+   * Só cargas: Z de cada fase (na frequência atual) e o equivalente
+   * na outra ligação (Kennelly; equilibrada: Z_Y = Z_Δ/3).
+   *   Y: A = Z_A…   Δ: A = Z_AB, B = Z_BC, C = Z_CA
+   */
+  impedances: Record<ThreePhaseRole, ImpedanceParameters> | null;
+  equivalentImpedances: Record<ThreePhaseRole, ImpedanceParameters> | null;
 }
 
 const ZERO: Phasor = { real: 0, imaginary: 0 };
@@ -107,6 +129,66 @@ function ratio(a: Phasor, b: Phasor) {
 const average = (values: number[]) =>
   values.reduce((sum, v) => sum + v, 0) / (values.length || 1);
 
+const toPhasor = (z: ImpedanceParameters): Phasor => ({
+  real: z.resistance,
+  imaginary: z.reactance,
+});
+const toImpedance = (p: Phasor): ImpedanceParameters => ({
+  resistance: p.real,
+  reactance: p.imaginary,
+});
+
+/*
+ * Kennelly (Δ → Y): Z_A = Z_AB·Z_CA/ΣZ, Z_B = Z_AB·Z_BC/ΣZ,
+ * Z_C = Z_BC·Z_CA/ΣZ. Equilibrada: Z_Y = Z_Δ/3.
+ */
+export function deltaToStar(
+  delta: Record<ThreePhaseRole, ImpedanceParameters>
+): Record<ThreePhaseRole, ImpedanceParameters> {
+  const ab = toPhasor(delta.A);
+  const bc = toPhasor(delta.B);
+  const ca = toPhasor(delta.C);
+  const sum = add(add(ab, bc), ca);
+
+  return {
+    A: toImpedance(div(mul(ab, ca), sum)),
+    B: toImpedance(div(mul(ab, bc), sum)),
+    C: toImpedance(div(mul(bc, ca), sum)),
+  };
+}
+
+/*
+ * Kennelly (Y → Δ): P = Z_A·Z_B + Z_B·Z_C + Z_C·Z_A;
+ * Z_AB = P/Z_C, Z_BC = P/Z_A, Z_CA = P/Z_B. Equilibrada: 3·Z_Y.
+ */
+export function starToDelta(
+  star: Record<ThreePhaseRole, ImpedanceParameters>
+): Record<ThreePhaseRole, ImpedanceParameters> {
+  const a = toPhasor(star.A);
+  const b = toPhasor(star.B);
+  const c = toPhasor(star.C);
+  const p = add(add(mul(a, b), mul(b, c)), mul(c, a));
+
+  return {
+    A: toImpedance(div(p, c)),
+    B: toImpedance(div(p, a)),
+    C: toImpedance(div(p, b)),
+  };
+}
+
+/* a = 1 ∠120° */
+const A_OP: Phasor = { real: -0.5, imaginary: Math.sqrt(3) / 2 };
+const A2_OP: Phasor = { real: -0.5, imaginary: -Math.sqrt(3) / 2 };
+const scale = (p: Phasor, k: number): Phasor => ({ real: p.real * k, imaginary: p.imaginary * k });
+
+export function symmetricalComponents(a: Phasor, b: Phasor, c: Phasor) {
+  return {
+    zero: scale(add(add(a, b), c), 1 / 3),
+    positive: scale(add(add(a, mul(A_OP, b)), mul(A2_OP, c)), 1 / 3),
+    negative: scale(add(add(a, mul(A2_OP, b)), mul(A_OP, c)), 1 / 3),
+  };
+}
+
 export function analyzeThreePhase(
   elements: CircuitElement[],
   results: MnaElectricalResults,
@@ -120,6 +202,22 @@ export function analyzeThreePhase(
     results.nodeVoltages.map((n) => [n.nodeId, n.voltage as Phasor])
   );
   const resultById = new Map(results.elementResults.map((r) => [r.elementId, r]));
+
+  /* Neutro do primeiro gerador em Y (referência do deslocamento). */
+  const sourceNeutral = (() => {
+    for (const groupId of getGroupIds(elements)) {
+      const members = getGroupMembers(elements, groupId);
+      const first = members[0];
+
+      if (first?.group?.kind !== "source" || first.group.connection !== "Y") {
+        continue;
+      }
+
+      const result = resultById.get(first.id);
+      return result ? nodeVoltage.get(result.fromNodeId) ?? ZERO : null;
+    }
+    return null;
+  })();
 
   return getGroupIds(elements).flatMap((groupId): ThreePhaseGroupAnalysis[] => {
     const members = getGroupMembers(elements, groupId);
@@ -159,6 +257,7 @@ export function analyzeThreePhase(
      *  gerador: saindo pela linha (Y) / saindo por A no ramo AB (Δ).
      */
     const phaseCurrents = {} as Record<ThreePhaseRole, Phasor>;
+    const phasePowers = {} as Record<ThreePhaseRole, Phasor>;
     let total: Phasor = ZERO;
 
     members.forEach((member) => {
@@ -169,7 +268,8 @@ export function analyzeThreePhase(
       if (member.type === "impedance") {
         const y = getImpedanceAdmittance(member, frequency) ?? ZERO;
         current = mul(phaseVoltages[role], y);
-        total = add(total, mul(phaseVoltages[role], conj(current)));
+        phasePowers[role] = mul(phaseVoltages[role], conj(current));
+        total = add(total, phasePowers[role]);
       } else {
         /* Fonte: S entregue = −S do extrator (negativo = entrega). */
         const delivered: Phasor = {
@@ -177,6 +277,7 @@ export function analyzeThreePhase(
           imaginary: -result.complexPower.imaginary,
         };
         current = conj(div(delivered, phaseVoltages[role]));
+        phasePowers[role] = delivered;
         total = add(total, delivered);
       }
 
@@ -202,7 +303,21 @@ export function analyzeThreePhase(
     const powerFactor = apparentPower > 0 ? activePower / apparentPower : 1;
 
     const isLoad = group.kind === "load";
-    const z = isLoad ? getImpedanceAt(members[0], frequency) : null;
+    const neutralPhasor =
+      group.connection === "Y"
+        ? ROLES.reduce((sum, r) => add(sum, phaseCurrents[r]), ZERO)
+        : null;
+    const sequenceCurrents = symmetricalComponents(
+      lineCurrents.A,
+      lineCurrents.B,
+      lineCurrents.C
+    );
+    const positive = magnitude(sequenceCurrents.positive);
+    const impedances = isLoad
+      ? (Object.fromEntries(
+          members.map((m) => [m.group!.role, getImpedanceAt(m, frequency)])
+        ) as Record<ThreePhaseRole, ImpedanceParameters>)
+      : null;
 
     return [
       {
@@ -226,17 +341,32 @@ export function analyzeThreePhase(
         apparentPower,
         powerFactor,
         formulaPower: Math.sqrt(3) * lineVoltage * lineCurrent * powerFactor,
-        neutralCurrent:
-          group.connection === "Y"
-            ? magnitude(
-                ROLES.reduce((sum, r) => add(sum, phaseCurrents[r]), ZERO)
-              )
+        neutralCurrent: neutralPhasor ? magnitude(neutralPhasor) : null,
+        neutralCurrentPhasor: neutralPhasor,
+        /*
+         * Carga: pela configuração. Gerador: pelas correntes que ele
+         * fornece (I₂ e I₀ desprezíveis diante de I₁).
+         */
+        balanced: isLoad
+          ? group.balanced !== false
+          : positive < 1e-12 ||
+            (magnitude(sequenceCurrents.negative) < 1e-3 * positive &&
+              magnitude(sequenceCurrents.zero) < 1e-3 * positive),
+        phasePowers,
+        neutralShift:
+          isLoad && group.connection === "Y" && sourceNeutral
+            ? sub(v("N"), sourceNeutral)
             : null,
-        impedance: z,
-        equivalentImpedance: z
+        sequenceCurrents,
+        unbalanceFactor:
+          positive > 1e-12
+            ? (magnitude(sequenceCurrents.negative) / positive) * 100
+            : 0,
+        impedances,
+        equivalentImpedances: impedances
           ? group.connection === "Y"
-            ? { resistance: z.resistance * 3, reactance: z.reactance * 3 }
-            : { resistance: z.resistance / 3, reactance: z.reactance / 3 }
+            ? starToDelta(impedances)
+            : deltaToStar(impedances)
           : null,
       },
     ];

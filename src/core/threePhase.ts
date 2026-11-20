@@ -200,6 +200,8 @@ export interface ThreePhaseLoadOptions {
   groupId: string;
   connection: "Y" | "D";
   impedance: ImpedanceParameters;
+  /* Desequilibrada: Z de cada fase (A = Z_A ou Z_AB…). */
+  impedances?: Partial<Record<ThreePhaseRole, ImpedanceParameters>>;
   x: number;
   y: number;
   label?: string;
@@ -210,17 +212,25 @@ export function createThreePhaseLoad(
 ): { elements: CircuitElement[]; connections: CircuitConnection[] } {
   const { groupId, connection, impedance, x, y } = options;
   const label = options.label ?? groupId;
+  const balanced = options.impedances === undefined;
 
   const elements = ROLES.map((role, index): CircuitElement => {
-    const group: ThreePhaseGroup = { id: groupId, kind: "load", connection, role };
+    const group: ThreePhaseGroup = {
+      id: groupId,
+      kind: "load",
+      connection,
+      role,
+      ...(balanced ? {} : { balanced: false }),
+    };
     const id = `${groupId}${getMemberName(group)}`;
+    const z = options.impedances?.[role] ?? impedance;
 
     return {
       id,
       type: "impedance",
       label: `${label} ${getMemberName(group)}`,
-      value: getImpedanceMagnitude(impedance),
-      impedance: { ...impedance },
+      value: getImpedanceMagnitude(z),
+      impedance: { ...z },
       x,
       y: y + index * GROUP_ROW_SPACING,
       terminals: createCircuitTerminals(id),
@@ -298,6 +308,14 @@ export function rebuildGroup(
           groupId,
           connection,
           impedance: getImpedanceParameters(first),
+          /* Desequilibrada: cada fase leva a sua Z para a nova ligação. */
+          ...(first.group.balanced === false
+            ? {
+                impedances: Object.fromEntries(
+                  members.map((m) => [m.group!.role, getImpedanceParameters(m)])
+                ),
+              }
+            : {}),
           label: labelBase,
           ...position,
         });
@@ -377,6 +395,11 @@ export function enforceBalance(
     const members = getGroupMembers(next, groupId);
 
     if (members.length === 0) {
+      return;
+    }
+
+    /* Carga desequilibrada: cada fase é livre. */
+    if (members[0].group?.kind === "load" && members[0].group.balanced === false) {
       return;
     }
 

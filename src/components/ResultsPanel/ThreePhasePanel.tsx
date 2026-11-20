@@ -12,16 +12,26 @@ const fmt = (value: number, digits = 2) =>
     .replace(".", ",")
     .replace(/^-/, "−");
 
-const phasor = (p: { real: number; imaginary: number }, unit: string, digits = 2) =>
+type P = { real: number; imaginary: number };
+
+const phasor = (p: P, unit: string, digits = 2) =>
   `${fmt(magnitude(p), digits)} ${unit} ∠${fmt(angleDegrees(p), 1)}°`;
 
 const CONNECTION = { Y: "Y (estrela)", D: "Δ (triângulo)" };
-const PHASE_NAMES = {
-  Y: { v: ["V_AN", "V_BN", "V_CN"], i: ["I_A", "I_B", "I_C"] },
-  D: { v: ["V_AB", "V_BC", "V_CA"], i: ["I_AB", "I_BC", "I_CA"] },
+const PHASE_LABEL = {
+  Y: { A: "A", B: "B", C: "C" },
+  D: { A: "AB", B: "BC", C: "CA" },
 };
-const LINE_V = ["V_AB", "V_BC", "V_CA"];
-const LINE_I = ["I_A", "I_B", "I_C"];
+const LINE_V = { A: "AB", B: "BC", C: "CA" };
+const ROLES = ["A", "B", "C"] as const;
+
+const card = {
+  border: "1px solid #e5e7eb",
+  borderRadius: "8px",
+  padding: "8px 10px",
+  marginTop: "8px",
+  fontSize: "13px",
+};
 
 /* Cartão de cada bloco trifásico: fase × linha, potências, neutro. */
 export function ThreePhasePanel({ groups }: ThreePhasePanelProps) {
@@ -29,76 +39,28 @@ export function ThreePhasePanel({ groups }: ThreePhasePanelProps) {
     return null;
   }
 
+  const anyUnbalanced = groups.some((g) => !g.balanced);
+
   return (
     <details open style={{ marginBottom: "16px" }}>
       <summary style={{ cursor: "pointer", fontWeight: 700 }}>
-        Trifásico (equilibrado)
+        Trifásico {anyUnbalanced ? "(desequilibrado)" : "(equilibrado)"}
       </summary>
 
       {groups.map((g) => {
-        const roles = ["A", "B", "C"] as const;
-        const names = PHASE_NAMES[g.connection];
         const isLoad = g.kind === "load";
+        const labels = PHASE_LABEL[g.connection];
 
         return (
-          <div
-            key={g.groupId}
-            style={{
-              border: "1px solid #e5e7eb",
-              borderRadius: "8px",
-              padding: "8px 10px",
-              marginTop: "8px",
-              fontSize: "13px",
-            }}
-          >
+          <div key={g.groupId} style={card}>
             <div style={{ fontWeight: 700, marginBottom: "4px" }}>
               {g.name} — {isLoad ? "carga" : "gerador"} em {CONNECTION[g.connection]}
-              {isLoad ? "" : `, sequência ${g.sequence}`}
+              {isLoad
+                ? g.balanced
+                  ? ", equilibrada"
+                  : ", desequilibrada"
+                : `, sequência ${g.sequence}${g.balanced ? "" : " (alimentando carga desequilibrada)"}`}
             </div>
-
-            <table className="measure-table">
-              <thead>
-                <tr>
-                  <th></th>
-                  <th>Fase</th>
-                  <th>Linha</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>Tensão (V)</td>
-                  <td>{fmt(g.phaseVoltage)}</td>
-                  <td>{fmt(g.lineVoltage)}</td>
-                </tr>
-                <tr>
-                  <td>Corrente (A)</td>
-                  <td>{fmt(g.phaseCurrent, 3)}</td>
-                  <td>{fmt(g.lineCurrent, 3)}</td>
-                </tr>
-              </tbody>
-            </table>
-
-            <p style={{ margin: "6px 0" }}>
-              {g.connection === "Y" ? (
-                <>
-                  Em Y: I_L = I_F e{" "}
-                  <strong>
-                    V_AB / V_AN = {g.voltageRatio ? fmt(g.voltageRatio.magnitude, 3) : "—"} ∠
-                    {g.voltageRatio ? fmt(g.voltageRatio.angle, 1) : "—"}°
-                  </strong>{" "}
-                  (√3 = 1,732; +30° em ABC, −30° em ACB).
-                </>
-              ) : (
-                <>
-                  Em Δ: V_L = V_F e{" "}
-                  <strong>
-                    I_A / I_AB = {g.currentRatio ? fmt(g.currentRatio.magnitude, 3) : "—"} ∠
-                    {g.currentRatio ? fmt(g.currentRatio.angle, 1) : "—"}°
-                  </strong>{" "}
-                  (√3 = 1,732; −30° em ABC, +30° em ACB).
-                </>
-              )}
-            </p>
 
             <table className="measure-table">
               <thead>
@@ -111,37 +73,125 @@ export function ThreePhasePanel({ groups }: ThreePhasePanelProps) {
                 </tr>
               </thead>
               <tbody>
-                {roles.map((role, i) => (
+                {ROLES.map((role) => (
                   <tr key={role}>
-                    <td>{role}</td>
-                    <td title={names.v[i]}>{phasor(g.phaseVoltages[role], "V", 1)}</td>
-                    <td title={names.i[i]}>{phasor(g.phaseCurrents[role], "A", 3)}</td>
-                    <td title={LINE_V[i]}>{phasor(g.lineVoltages[role], "V", 1)}</td>
-                    <td title={LINE_I[i]}>{phasor(g.lineCurrents[role], "A", 3)}</td>
+                    <td>{labels[role]}</td>
+                    <td>{phasor(g.phaseVoltages[role], "V", 1)}</td>
+                    <td>{phasor(g.phaseCurrents[role], "A", 3)}</td>
+                    <td title={`V_${LINE_V[role]}`}>{phasor(g.lineVoltages[role], "V", 1)}</td>
+                    <td title={`I_${role}`}>{phasor(g.lineCurrents[role], "A", 3)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
 
+            {g.balanced ? (
+              <p style={{ margin: "6px 0" }}>
+                {g.connection === "Y" ? (
+                  <>
+                    Em Y: I_L = I_F e{" "}
+                    <strong>
+                      V_AB / V_AN = {g.voltageRatio ? fmt(g.voltageRatio.magnitude, 3) : "—"} ∠
+                      {g.voltageRatio ? fmt(g.voltageRatio.angle, 1) : "—"}°
+                    </strong>{" "}
+                    (√3 = 1,732; +30° em ABC, −30° em ACB).
+                  </>
+                ) : (
+                  <>
+                    Em Δ: V_L = V_F e{" "}
+                    <strong>
+                      I_A / I_AB = {g.currentRatio ? fmt(g.currentRatio.magnitude, 3) : "—"} ∠
+                      {g.currentRatio ? fmt(g.currentRatio.angle, 1) : "—"}°
+                    </strong>{" "}
+                    (√3 = 1,732; −30° em ABC, +30° em ACB).
+                  </>
+                )}
+              </p>
+            ) : (
+              <table className="measure-table" style={{ marginTop: "6px" }}>
+                <thead>
+                  <tr>
+                    <th>Fase</th>
+                    {isLoad ? <th>Z</th> : null}
+                    <th>P (W)</th>
+                    <th>Q (var)</th>
+                    <th>FP</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ROLES.map((role) => {
+                    const s = g.phasePowers[role];
+                    const sMag = magnitude(s);
+                    return (
+                      <tr key={role}>
+                        <td>{labels[role]}</td>
+                        {isLoad && g.impedances ? (
+                          <td>{formatImpedance(g.impedances[role], true)}</td>
+                        ) : null}
+                        <td>{fmt(s.real, 1)}</td>
+                        <td>{fmt(s.imaginary, 1)}</td>
+                        <td>{sMag > 0 ? fmt(s.real / sMag, 3) : "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+
             <p style={{ margin: "6px 0 0" }}>
-              {isLoad ? "Absorve" : "Entrega"}: P = {fmt(g.activePower, 1)} W, Q ={" "}
+              {isLoad ? "Absorve" : "Entrega"} no total: P = {fmt(g.activePower, 1)} W, Q ={" "}
               {fmt(g.reactivePower, 1)} var, S = {fmt(g.apparentPower, 1)} VA, FP ={" "}
               {fmt(g.powerFactor, 3)}.
               <br />
-              Conferência: √3·V_L·I_L·FP = {fmt(g.formulaPower, 1)} W.
-              {g.neutralCurrent !== null ? (
+              {g.balanced
+                ? `Conferência: √3·V_L·I_L·FP = ${fmt(g.formulaPower, 1)} W.`
+                : "Desequilibrado: a potência total é a soma das fases (√3·V_L·I_L·FP não vale)."}
+
+              {g.neutralCurrentPhasor ? (
                 <>
                   <br />
-                  Soma das correntes de fase (neutro): {fmt(g.neutralCurrent, 4)} A
-                  {g.neutralCurrent < 1e-3 ? " — equilibrado, o neutro não conduz." : "."}
+                  I_A + I_B + I_C ={" "}
+                  {magnitude(g.neutralCurrentPhasor) < 1e-6 ? "0 A" : phasor(g.neutralCurrentPhasor, "A", 4)}
+                  {g.neutralCurrent !== null && g.neutralCurrent < 1e-3
+                    ? g.balanced
+                      ? " — equilibrado, o neutro não conduz."
+                      : " — sem fio de neutro, a soma é zero."
+                    : " — corrente no fio de neutro."}
                 </>
               ) : null}
-              {g.impedance && g.equivalentImpedance ? (
+
+              {g.neutralShift ? (
                 <>
                   <br />
-                  Z por fase = {formatImpedance(g.impedance, true)}; equivalente em{" "}
-                  {g.connection === "Y" ? "Δ: Z_Δ = 3·Z_Y" : "Y: Z_Y = Z_Δ/3"} ={" "}
-                  {formatImpedance(g.equivalentImpedance, true)}.
+                  Deslocamento do neutro V_nN = {phasor(g.neutralShift, "V", 2)}
+                  {magnitude(g.neutralShift) > 1e-3
+                    ? " — as fases da carga não ficam com V_L/√3."
+                    : "."}
+                </>
+              ) : null}
+
+              {!g.balanced ? (
+                <>
+                  <br />
+                  Componentes simétricas de I_L: I₀ = {fmt(magnitude(g.sequenceCurrents.zero), 3)} A,
+                  I₁ = {fmt(magnitude(g.sequenceCurrents.positive), 3)} A, I₂ ={" "}
+                  {fmt(magnitude(g.sequenceCurrents.negative), 3)} A; desequilíbrio I₂/I₁ ={" "}
+                  {fmt(g.unbalanceFactor, 1)} %.
+                </>
+              ) : null}
+
+              {g.impedances && g.equivalentImpedances ? (
+                <>
+                  <br />
+                  Equivalente em {g.connection === "Y" ? "Δ" : "Y"}
+                  {g.balanced ? (g.connection === "Y" ? " (3·Z_Y)" : " (Z_Δ/3)") : " (Kennelly)"}:{" "}
+                  {g.balanced
+                    ? formatImpedance(g.equivalentImpedances.A, true)
+                    : ROLES.map(
+                        (role) =>
+                          `${g.connection === "Y" ? `Z${LINE_V[role]}` : `Z${role}`} = ${formatImpedance(g.equivalentImpedances![role], true)}`
+                      ).join("; ")}
+                  {g.balanced ? ` (Z por fase = ${formatImpedance(g.impedances.A, true)})` : ""}.
                 </>
               ) : null}
             </p>

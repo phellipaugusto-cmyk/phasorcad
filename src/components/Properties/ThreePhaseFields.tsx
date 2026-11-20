@@ -9,6 +9,7 @@ interface ThreePhaseFieldsProps {
     connection?: "Y" | "D";
     sequence?: "ABC" | "ACB";
     lineVoltage?: number;
+    balanced?: boolean;
   }) => void;
 }
 
@@ -21,13 +22,16 @@ export function ThreePhaseFields({ element, members, onChange }: ThreePhaseField
   }
 
   const isSource = group.kind === "source";
+  const balanced = isSource || group.balanced !== false;
   const name = element.label.replace(/\s+\S+$/, "");
 
   return (
     <div className="motor-fields">
       <div>
-        <strong>{name}</strong> — {isSource ? "gerador" : "carga"} trifásico
-        {isSource ? "" : "a"} equilibrad{isSource ? "o" : "a"}
+        <strong>{name}</strong> —{" "}
+        {isSource
+          ? "gerador trifásico equilibrado"
+          : `carga trifásica ${balanced ? "equilibrada" : "desequilibrada"}`}
       </div>
 
       <label className="motor-field">
@@ -42,6 +46,19 @@ export function ThreePhaseFields({ element, members, onChange }: ThreePhaseField
           <option value="D">Triângulo (Δ)</option>
         </select>
       </label>
+
+      {!isSource ? (
+        <label className="motor-field">
+          <span>Fases</span>
+          <select
+            value={balanced ? "eq" : "deseq"}
+            onChange={(event) => onChange({ balanced: event.target.value === "eq" })}
+          >
+            <option value="eq">Equilibrada (mesma Z nas três)</option>
+            <option value="deseq">Desequilibrada (Z própria por fase)</option>
+          </select>
+        </label>
+      ) : null}
 
       {isSource ? (
         <>
@@ -73,7 +90,10 @@ export function ThreePhaseFields({ element, members, onChange }: ThreePhaseField
           : group.connection === "Y"
             ? "Em Y, cada Z fica entre a linha e o neutro (terminais direitos ligados)."
             : "Em Δ, cada Z fica entre duas linhas: Z_AB, Z_BC e Z_CA."}{" "}
-        Mudar um membro muda os três. Trocar a ligação mantém os fios das linhas
+        {balanced
+          ? "Mudar um membro muda os três."
+          : "Cada fase tem a sua Z: selecione Z_A, Z_B ou Z_C (Z_AB…) para editar."}{" "}
+        Trocar a ligação mantém os fios das linhas
         A, B e C{group.connection === "Y" ? " (o do neutro é removido)" : ""}.
       </p>
     </div>

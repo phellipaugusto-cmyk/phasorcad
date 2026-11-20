@@ -1029,10 +1029,46 @@ export function useCircuitEditor() {
     connection?: "Y" | "D";
     sequence?: "ABC" | "ACB";
     lineVoltage?: number;
+    balanced?: boolean;
   }) {
     const group = selectedElement?.group;
 
-    if (!group) {
+    if (!group || !selectedElement) {
+      return;
+    }
+
+    /*
+     * Equilibrada ↔ desequilibrada. Ao voltar a equilibrar, as três
+     * fases recebem a Z do membro selecionado.
+     */
+    if (changes.balanced !== undefined) {
+      if (group.kind !== "load") {
+        return;
+      }
+
+      const z = getImpedanceParameters(selectedElement);
+
+      setElements((currentElements) =>
+        currentElements.map((element) => {
+          if (element.group?.id !== group.id) {
+            return element;
+          }
+
+          const nextGroup = { ...element.group };
+
+          if (changes.balanced) {
+            delete nextGroup.balanced;
+            return {
+              ...element,
+              group: nextGroup,
+              impedance: { ...z },
+              value: getImpedanceMagnitude(z),
+            };
+          }
+
+          return { ...element, group: { ...nextGroup, balanced: false } };
+        })
+      );
       return;
     }
 

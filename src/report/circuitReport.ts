@@ -783,28 +783,55 @@ export async function buildCircuitReport(
 
     if (threePhase.length > 0) {
       pdf.cursor += 6;
-      pdf.heading("2.1 Análise trifásica (equilibrada)");
+      pdf.heading(
+        threePhase.some((g) => !g.balanced)
+          ? "2.1 Análise trifásica (desequilibrada)"
+          : "2.1 Análise trifásica (equilibrada)"
+      );
 
       const pct = (value: number, digits = 2) =>
         fmt(value, digits).replace(/^-/, "−");
       const ratioText = (r: { magnitude: number; angle: number } | null) =>
         r ? `${pct(r.magnitude, 3)} ∠${pct(r.angle, 1)}°` : "—";
-      const z = (p: { resistance: number; reactance: number } | null) =>
-        p ? formatImpedance(p, true) : "—";
+      const mag = (p: { real: number; imaginary: number }) => Math.hypot(p.real, p.imaginary);
+      const ang = (p: { real: number; imaginary: number }) =>
+        (Math.atan2(p.imaginary, p.real) * 180) / Math.PI;
+      const pol = (p: { real: number; imaginary: number } | null, unit: string, d = 2) =>
+        p ? (mag(p) < 1e-6 ? `0 ${unit}` : `${pct(mag(p), d)} ${unit} ∠${pct(ang(p), 1)}°`) : "—";
+      const zList = (
+        g: ThreePhaseGroupAnalysis,
+        which: "impedances" | "equivalentImpedances"
+      ) => {
+        const list = g[which];
+        if (!list) return "—";
+        if (g.balanced) return formatImpedance(list.A, true);
+        return (["A", "B", "C"] as const)
+          .map((role) => formatImpedance(list[role], true))
+          .join("; ");
+      };
 
       const rows: [string, (g: ThreePhaseGroupAnalysis) => string][] = [
-        ["Ligação", (g) => `${g.kind === "load" ? "Carga" : "Gerador"} em ${g.connection === "Y" ? "Y" : "Δ"}${g.kind === "source" ? ` (${g.sequence})` : ""}`],
-        ["Tensão de fase / de linha (V)", (g) => `${pct(g.phaseVoltage)} / ${pct(g.lineVoltage)}`],
-        ["Corrente de fase / de linha (A)", (g) => `${pct(g.phaseCurrent, 3)} / ${pct(g.lineCurrent, 3)}`],
-        ["V_AB / V_AN (só Y)", (g) => (g.connection === "Y" ? ratioText(g.voltageRatio) : "—")],
-        ["I_A / I_AB (só Δ)", (g) => (g.connection === "D" ? ratioText(g.currentRatio) : "—")],
+        ["Ligação", (g) => `${g.kind === "load" ? "Carga" : "Gerador"} em ${g.connection === "Y" ? "Y" : "Δ"}${g.kind === "source" ? ` (${g.sequence})` : g.balanced ? ", equilibrada" : ", desequilibrada"}`],
+        ["V fase / V linha (V, média)", (g) => `${pct(g.phaseVoltage)} / ${pct(g.lineVoltage)}`],
+        ["I fase / I linha (A, média)", (g) => `${pct(g.phaseCurrent, 3)} / ${pct(g.lineCurrent, 3)}`],
+        ["V_AB / V_AN (Y equilibrado)", (g) => (g.connection === "Y" && (g.balanced || g.kind === "source") ? ratioText(g.voltageRatio) : "—")],
+        ["I_A / I_AB (Δ equilibrado)", (g) => (g.connection === "D" && g.balanced ? ratioText(g.currentRatio) : "—")],
         ["P total (W)", (g) => pct(g.activePower, 1)],
         ["Q total (var)", (g) => pct(g.reactivePower, 1)],
         ["S total (VA) / FP", (g) => `${pct(g.apparentPower, 1)} / ${pct(g.powerFactor, 3)}`],
-        ["√3·V_L·I_L·FP (W)", (g) => pct(g.formulaPower, 1)],
-        ["Corrente no neutro (A)", (g) => (g.neutralCurrent === null ? "—" : pct(g.neutralCurrent, 4))],
-        ["Z por fase", (g) => z(g.impedance)],
-        ["Equivalente (Z_Δ = 3·Z_Y)", (g) => z(g.equivalentImpedance)],
+        ["√3·V_L·I_L·FP (W)", (g) => (g.balanced ? pct(g.formulaPower, 1) : "não vale")],
+        ...(["A", "B", "C"] as const).map(
+          (role): [string, (g: ThreePhaseGroupAnalysis) => string] => [
+            `Fase ${role}: P (W) / Q (var)`,
+            (g) => `${pct(g.phasePowers[role].real, 1)} / ${pct(g.phasePowers[role].imaginary, 1)}`,
+          ]
+        ),
+        ["I_A + I_B + I_C (neutro)", (g) => pol(g.neutralCurrentPhasor, "A", 3)],
+        ["Deslocamento do neutro V_nN", (g) => pol(g.neutralShift, "V")],
+        ["I0 / I1 / I2 (A)", (g) => `${pct(mag(g.sequenceCurrents.zero), 3)} / ${pct(mag(g.sequenceCurrents.positive), 3)} / ${pct(mag(g.sequenceCurrents.negative), 3)}`],
+        ["Desequilíbrio I2/I1", (g) => `${pct(g.unbalanceFactor, 1)} %`],
+        ["Z (A; B; C ou AB; BC; CA)", (g) => zList(g, "impedances")],
+        ["Equivalente na outra ligação", (g) => zList(g, "equivalentImpedances")],
       ];
 
       const labelWidth = 150;
@@ -819,7 +846,7 @@ export async function buildCircuitReport(
       );
 
       pdf.paragraph(
-        "Gerador: potências entregues; carga: absorvidas. Em Y, I_L = I_F e V_L = √3·V_F ∠±30°; em Δ, V_L = V_F e I_L = √3·I_F ∠∓30° (sinal superior para a sequência ABC).",
+        "Gerador: potências entregues; carga: absorvidas. Equilibrado: em Y, I_L = I_F e V_L = √3·V_F ∠±30°; em Δ, V_L = V_F e I_L = √3·I_F ∠∓30° (sinal superior para ABC). Desequilibrado: P total = soma das fases; V_nN é a tensão entre o neutro da carga e o do gerador (≠ 0 sem fio de neutro); I0, I1 e I2 são as componentes simétricas das correntes de linha. Equivalente Y↔Δ pelas fórmulas de Kennelly (equilibrada: Z_Y = Z_Δ/3).",
         { size: 8, color: "#6b7280" }
       );
     }
