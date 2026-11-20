@@ -1,3 +1,13 @@
+import { powerFactorText } from "../core/threePhaseNotation";
+import {
+  GROUP_HEIGHT,
+  getElementSize,
+  getGroupTips,
+  getMemberSegment,
+  getMemberSymbolLabel,
+  getNodeLabel,
+} from "../components/Canvas/threePhaseLayout";
+import { getGroupByElementId, isInternalGroupConnection } from "../core/threePhase";
 import type { CircuitConnection } from "../core/CircuitConnection";
 import type { CircuitElement } from "../core/CircuitElement";
 import { isSourceType } from "../core/CircuitElement";
@@ -6,8 +16,6 @@ import type { CircuitResult } from "../core/CircuitResult";
 import type { MnaElectricalResults } from "../core/MnaElectricalResults";
 import type { CircuitState } from "../solver/CircuitTopology";
 import {
-  COMPONENT_HEIGHT,
-  COMPONENT_WIDTH,
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
   GRID_SIZE,
@@ -205,17 +213,108 @@ function schematicHeightFor(elements: CircuitElement[]): number {
   }
 
   const w =
-    Math.max(...elements.map((e) => e.x)) -
+    Math.max(...elements.map((e) => e.x + getElementSize(e).width)) -
     Math.min(...elements.map((e) => e.x)) +
-    COMPONENT_WIDTH +
     80;
   const h =
-    Math.max(...elements.map((e) => e.y)) -
+    Math.max(...elements.map((e) => e.y + getElementSize(e).height + (e.group ? 72 : 0))) -
     Math.min(...elements.map((e) => e.y)) +
-    COMPONENT_HEIGHT +
     60;
 
   return Math.min(440, Math.max(140, (CONTENT_W * h) / w));
+}
+
+/* Bloco trifásico no PDF, com a mesma geometria do Canvas. */
+function drawThreePhaseGroup(
+  pdf: Pdf,
+  members: CircuitElement[],
+  X: (x: number) => number,
+  Y: (y: number) => number,
+  scale: number
+) {
+  const first = members.find((m) => m.group?.role === "A") ?? members[0];
+  const group = first?.group;
+
+  if (!first || !group) {
+    return;
+  }
+
+  const ox = first.x;
+  const oy = first.y;
+  const px = (x: number) => X(ox + x);
+  const py = (y: number) => Y(oy + y);
+  const ink = "#111827";
+  const st = { color: ink, width: Math.max(0.9, 1.5 * scale) };
+  const isSource = group.kind === "source";
+  const half = 23;
+  const font = Math.max(6.5, 9 * Math.min(scale, 1.1));
+
+  members.forEach((member) => {
+    const g = member.group!;
+    const { from, to } = getMemberSegment(g);
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const length = Math.hypot(dx, dy);
+    const ux = dx / length;
+    const uy = dy / length;
+    const mid = { x: from.x + dx * 0.55, y: from.y + dy * 0.55 };
+    const at = (u: number, v: number) => [px(mid.x + ux * u - uy * v), py(mid.y + uy * u + ux * v)] as [number, number];
+
+    pdf.line(px(from.x), py(from.y), px(mid.x - ux * half), py(mid.y - uy * half), st);
+    pdf.line(px(mid.x + ux * half), py(mid.y + uy * half), px(to.x), py(to.y), st);
+
+    if (isSource) {
+      /* Bobina: 5 laços (semicírculos aproximados por segmentos). */
+      const loop = (2 * half) / 5;
+      const points: [number, number][] = [];
+      for (let k = 0; k < 5; k++) {
+        for (let t = 0; t <= 8; t++) {
+          const a = Math.PI - (Math.PI * t) / 8;
+          points.push(at(-half + loop * k + loop / 2 + (loop / 2) * Math.cos(a), -7 * Math.sin(a)));
+        }
+      }
+      pdf.polyline(points, st);
+    } else {
+      const corners = [at(-20, -11), at(20, -11), at(20, 11), at(-20, 11), at(-20, -11)];
+      pdf.polyline(corners, { color: ink, width: Math.max(0.8, 1.2 * scale) });
+    }
+
+    /* Rótulo: Z1/Z2/Z3 no centro da caixa; EAN… do lado de fora da bobina. */
+    let nx = -uy;
+    let ny = ux;
+    const cx = 100;
+    const cy = g.connection === "Y" ? 100 : 107;
+    if ((mid.x + nx * 10 - cx) ** 2 + (mid.y + ny * 10 - cy) ** 2 < (mid.x - cx) ** 2 + (mid.y - cy) ** 2) {
+      nx = -nx;
+      ny = -ny;
+    }
+    const name = getMemberSymbolLabel(g);
+    const lx = isSource ? mid.x + nx * 22 : mid.x;
+    const ly = isSource ? mid.y + ny * 22 : mid.y;
+    pdf.text(name, px(lx), py(ly) + font * 0.35, { size: font, bold: true, align: "center", color: ink });
+  });
+
+  const tips = getGroupTips(group);
+  (["A", "B", "C", "N"] as const).forEach((role) => {
+    const tip = tips[role];
+    if (!tip) return;
+    const node = tip.node;
+    if (node.x !== tip.x || node.y !== tip.y) {
+      pdf.line(px(node.x), py(node.y), px(tip.x), py(tip.y), st);
+    }
+    pdf.circle(px(node.x), py(node.y), Math.max(1.2, 2 * scale), { fill: ink });
+    const lx = role === "N" ? node.x + (isSource ? -12 : 12) : role === "A" ? node.x - 12 : node.x + (role === "B" ? 12 : -12);
+    const ly = role === "N" ? node.y - 8 : role === "A" ? node.y - 2 : node.y - 4;
+    pdf.text(getNodeLabel(group, role), px(lx), py(ly), { size: font, align: "center", color: ink });
+  });
+
+  const name = first.label.replace(/\s+\S+$/, "");
+  pdf.text(`${name} (${group.connection === "Y" ? "Y" : "Δ"})`, px(100), py(GROUP_HEIGHT + 34), {
+    size: font,
+    bold: true,
+    align: "center",
+    color: ink,
+  });
 }
 
 function drawSchematic(
@@ -223,16 +322,22 @@ function drawSchematic(
   input: ReportInput,
   box: { x: number; top: number; w: number; h: number }
 ) {
-  const { elements, connections } = input;
+  const { elements } = input;
 
   if (elements.length === 0) {
     return;
   }
 
+  /* Fios internos dos blocos trifásicos: o desenho do bloco já os mostra. */
+  const groupByElementId = getGroupByElementId(elements);
+  const connections = input.connections.filter(
+    (connection) => !isInternalGroupConnection(connection, groupByElementId)
+  );
+
   const minX = Math.min(...elements.map((e) => e.x)) - 14;
-  const maxX = Math.max(...elements.map((e) => e.x + COMPONENT_WIDTH)) + 14;
-  const minY = Math.min(...elements.map((e) => e.y)) - 6;
-  const maxY = Math.max(...elements.map((e) => e.y + COMPONENT_HEIGHT)) + 6;
+  const maxX = Math.max(...elements.map((e) => e.x + getElementSize(e).width)) + 14;
+  const minY = Math.min(...elements.map((e) => e.y)) - 18;
+  const maxY = Math.max(...elements.map((e) => e.y + getElementSize(e).height + (e.group ? 72 : 0))) + 6;
 
   /* Fios roteados como no Canvas (precisa de um Canvas que caiba tudo). */
   const canvas = {
@@ -289,6 +394,20 @@ function drawSchematic(
   });
 
   elements.forEach((element) => {
+    /* Bloco trifásico: desenhado uma vez, como estrela ou triângulo. */
+    if (element.group) {
+      if (element.group.role === "A") {
+        drawThreePhaseGroup(
+          pdf,
+          elements.filter((item) => item.group?.id === element.group?.id),
+          X,
+          Y,
+          scale
+        );
+      }
+      return;
+    }
+
     const color = COLORS[element.type] ?? "#111827";
     const left = getTerminalPosition(element, element.terminals[0].id);
     const cy = left.y;
@@ -759,7 +878,7 @@ export async function buildCircuitReport(
 
       (result.sourcePowers ?? []).forEach((source) => {
         summary.push([
-          `${source.elementId} entrega`,
+          `${elements.find((e) => e.id === source.elementId)?.label ?? source.elementId} entrega`,
           `${fmt(source.activePower)} W  /  ${fmt(source.reactivePower)} var`,
         ]);
       });
@@ -818,8 +937,10 @@ export async function buildCircuitReport(
         ["V_AB / V_AN (Y equilibrado)", (g) => (g.connection === "Y" && (g.balanced || (g.kind === "source" && g.voltageUnbalance < 0.01)) ? ratioText(g.voltageRatio) : "—")],
         ["I_A / I_AB (Δ equilibrado)", (g) => (g.connection === "D" && g.balanced ? ratioText(g.currentRatio) : "—")],
         ["P total (W)", (g) => pct(g.activePower, 1)],
-        ["Q total (var)", (g) => pct(g.reactivePower, 1)],
-        ["S total (VA) / FP", (g) => `${pct(g.apparentPower, 1)} / ${pct(g.powerFactor, 3)}`],
+        ["Q total (VAR)", (g) => pct(g.reactivePower, 1)],
+        ["S total (VA)", (g) => pct(g.apparentPower, 1)],
+        ["Fator de potência", (g) => powerFactorText(g.powerFactor, g.reactivePower)],
+        ["Dois wattímetros W1 / W2 (W)", (g) => (g.kind === "load" ? `${pct(g.wattmeters.w1, 1)} / ${pct(g.wattmeters.w2, 1)}` : "—")],
         ["√3·V_L·I_L·FP (W)", (g) => (g.balanced ? pct(g.formulaPower, 1) : "não vale")],
         ...(["A", "B", "C"] as const).map(
           (role): [string, (g: ThreePhaseGroupAnalysis) => string] => [

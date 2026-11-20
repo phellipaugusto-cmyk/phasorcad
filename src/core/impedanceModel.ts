@@ -80,6 +80,17 @@ export function getImpedanceAdmittance(
   };
 }
 
+/* Forma curta para desenho: "200 Ω", "−j165,8 Ω", "8 + j6 Ω". */
+export function formatImpedanceCompact(params: ImpedanceParameters): string {
+  const n = (value: number) => String(Number(value.toPrecision(4))).replace(".", ",");
+  const r = params.resistance;
+  const x = params.reactance;
+
+  if (Math.abs(x) < 1e-9) return `${n(r)} Ω`;
+  if (Math.abs(r) < 1e-9) return `${x < 0 ? "−" : ""}j${n(Math.abs(x))} Ω`;
+  return `${n(r)} ${x < 0 ? "−" : "+"} j${n(Math.abs(x))} Ω`;
+}
+
 /* "10 + j5 Ω" / "10 − j5 Ω" (vírgula decimal opcional). */
 export function formatImpedance(
   params: ImpedanceParameters,

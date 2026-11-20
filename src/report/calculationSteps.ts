@@ -2,8 +2,18 @@ import type { CircuitElement, ThreePhaseRole } from "../core/CircuitElement";
 import type { MnaElectricalResults } from "../core/MnaElectricalResults";
 import {
   analyzeThreePhase,
+  correctPowerFactor,
   type ThreePhaseGroupAnalysis,
 } from "../solver/threePhaseAnalysis";
+import {
+  impedanceSymbol,
+  lineCurrentSymbol,
+  lineVoltageSymbol,
+  phaseCurrentSymbol,
+  phaseVoltageSymbol,
+  plain,
+  powerFactorText,
+} from "../core/threePhaseNotation";
 import { getImpedanceAt } from "../core/impedanceModel";
 import { getGroupMembers } from "../core/threePhase";
 import { isSourceType } from "../core/CircuitElement";
@@ -64,32 +74,39 @@ function zOf(member: CircuitElement, frequency: number): C {
   return c(z.resistance, z.reactance);
 }
 
+/* Nomes da apostila em texto corrido: EAN, Van, IAa, Ian, Z1… */
+const nm = {
+  ev: (g: ThreePhaseGroupAnalysis, r: ThreePhaseRole) => plain(phaseVoltageSymbol(g, r)),
+  el: (g: ThreePhaseGroupAnalysis, r: ThreePhaseRole) => plain(lineVoltageSymbol(g, r)),
+  ip: (g: ThreePhaseGroupAnalysis, r: ThreePhaseRole) => plain(phaseCurrentSymbol(g, r)),
+  il: (r: ThreePhaseRole) => plain(lineCurrentSymbol(r)),
+  z: (r: ThreePhaseRole) => plain(impedanceSymbol(r)),
+};
+
 function powerLines(g: ThreePhaseGroupAnalysis, isLoad: boolean): string[] {
   const lines: string[] = [];
   const label = isLoad ? "absorvida" : "entregue";
-  const vName = g.connection === "Y" ? (r: ThreePhaseRole) => `V${r}N` : (r: ThreePhaseRole) => `V${PAIR[r]}`;
-  const iName = g.connection === "Y" ? (r: ThreePhaseRole) => `I${r}` : (r: ThreePhaseRole) => `I${PAIR[r]}`;
 
-  lines.push(`# Potência ${label} (S = V·I* por fase)`);
+  lines.push(`# Potência ${label} (Sφ = Vφ·Iφ* em cada fase)`);
 
   if (g.balanced) {
     const s = g.phasePowers.A;
     lines.push(
-      `S fase = ${vName("A")}·${iName("A")}* = ${pol(g.phaseVoltages.A, "V")} · ${pol(conj(g.phaseCurrents.A), "A")} = ${rect(s, "VA", 1)}`,
-      `S total = 3·S fase = ${rect(c(g.activePower, g.reactivePower), "VA", 1)}  →  P = ${n(g.activePower, 1)} W, Q = ${n(g.reactivePower, 1)} var`,
-      `|S| = √(P² + Q²) = ${n(g.apparentPower, 1)} VA;  FP = P/|S| = ${n(g.powerFactor, 3)}`,
-      `Conferência: P = √3·VL·IL·FP = 1,732 · ${n(g.lineVoltage)} · ${n(g.lineCurrent, 3)} · ${n(g.powerFactor, 3)} = ${n(g.formulaPower, 1)} W`
+      `Sφ = ${nm.ev(g, "A")}·${nm.ip(g, "A")}* = ${pol(g.phaseVoltages.A, "V")} · ${pol(conj(g.phaseCurrents.A), "A")} = ${rect(s, "VA", 1)}`,
+      `PT = 3·Pφ = ${n(g.activePower, 1)} W;  QT = 3·Qφ = ${n(g.reactivePower, 1)} VAR;  ST = √(PT² + QT²) = ${n(g.apparentPower, 1)} VA`,
+      `Fp = PT/ST = ${powerFactorText(g.powerFactor, g.reactivePower)}`,
+      `Conferência: PT = √3·EL·IL·cos θ = 1,732 · ${n(g.lineVoltage)} · ${n(g.lineCurrent, 3)} · ${n(g.powerFactor, 3)} = ${n(g.formulaPower, 1)} W`
     );
   } else {
     ROLES.forEach((r) => {
       const s = g.phasePowers[r];
       lines.push(
-        `S ${g.connection === "Y" ? r : PAIR[r]} = ${vName(r)}·${iName(r)}* = ${pol(g.phaseVoltages[r], "V")} · ${pol(conj(g.phaseCurrents[r]), "A")} = ${rect(s, "VA", 1)}`
+        `S${isLoad ? nm.z(r).slice(1) : r} = ${nm.ev(g, r)}·${nm.ip(g, r)}* = ${pol(g.phaseVoltages[r], "V")} · ${pol(conj(g.phaseCurrents[r]), "A")} = ${rect(s, "VA", 1)}`
       );
     });
     lines.push(
-      `S total = Σ S fase = ${rect(c(g.activePower, g.reactivePower), "VA", 1)}  →  P = ${n(g.activePower, 1)} W, Q = ${n(g.reactivePower, 1)} var, FP = ${n(g.powerFactor, 3)}`,
-      "(desequilibrado: √3·VL·IL·FP não se aplica; soma-se fase a fase)"
+      `ST = S1 + S2 + S3 = ${rect(c(g.activePower, g.reactivePower), "VA", 1)}  →  PT = ${n(g.activePower, 1)} W, QT = ${n(g.reactivePower, 1)} VAR, Fp = ${powerFactorText(g.powerFactor, g.reactivePower)}`,
+      "(desequilibrado: soma-se fase a fase; √3·EL·IL·cos θ não se aplica)"
     );
   }
 
@@ -100,9 +117,9 @@ function sequenceLines(g: ThreePhaseGroupAnalysis): string[] {
   const I = g.lineCurrents;
   return [
     "# Componentes simétricas das correntes de linha (a = 1∠120°)",
-    `I0 = (IA + IB + IC)/3 = ${pol(g.sequenceCurrents.zero, "A", 3)}`,
-    `I1 = (IA + a·IB + a²·IC)/3 = (${pol(I.A)} + 1∠120°·${pol(I.B)} + 1∠240°·${pol(I.C)})/3 = ${pol(g.sequenceCurrents.positive, "A", 3)}`,
-    `I2 = (IA + a²·IB + a·IC)/3 = ${pol(g.sequenceCurrents.negative, "A", 3)}`,
+    `I0 = (IAa + IBb + ICc)/3 = ${pol(g.sequenceCurrents.zero, "A", 3)}`,
+    `I1 = (IAa + a·IBb + a²·ICc)/3 = (${pol(I.A)} + 1∠120°·${pol(I.B)} + 1∠240°·${pol(I.C)})/3 = ${pol(g.sequenceCurrents.positive, "A", 3)}`,
+    `I2 = (IAa + a²·IBb + a·ICc)/3 = ${pol(g.sequenceCurrents.negative, "A", 3)}`,
     `Desequilíbrio = |I2|/|I1| = ${n(abs(g.sequenceCurrents.negative), 3)} / ${n(abs(g.sequenceCurrents.positive), 3)} = ${n(g.unbalanceFactor, 1)} %`,
   ];
 }
@@ -114,26 +131,33 @@ function sourceBlock(g: ThreePhaseGroupAnalysis): CalculationBlock {
   if (g.connection === "Y") {
     if (g.voltageUnbalance < 0.01) {
       lines.push(
-        "# Tensões de fase e de linha (Y equilibrado)",
-        `VF = VL/√3 = ${n(g.lineVoltage)}/1,732 = ${n(g.phaseVoltage)} V`,
-        `VAN = ${pol(V.A, "V")};  VBN = ${pol(V.B, "V")};  VCN = ${pol(V.C, "V")}`,
-        `VAB = VAN − VBN = √3·VAN∠${g.sequence === "ABC" ? "+" : "−"}30° = ${pol(g.lineVoltages.A, "V")}`
+        "# Tensões de fase e de linha (gerador em Y)",
+        `Eφ = EL/√3 = ${n(g.lineVoltage)}/1,732 = ${n(g.phaseVoltage)} V`,
+        `EAN = ${pol(V.A, "V")} (referência);  EBN = ${pol(V.B, "V")};  ECN = ${pol(V.C, "V")}`,
+        `EAB = EAN − EBN = √3·EAN∠${g.sequence === "ABC" ? "+" : "−"}30° = ${pol(g.lineVoltages.A, "V")}`,
+        `EBC = ${pol(g.lineVoltages.B, "V")};  ECA = ${pol(g.lineVoltages.C, "V")};  EAB + EBC + ECA = 0`
       );
     } else {
       lines.push(
         "# Tensões de linha a partir das de fase (Y desequilibrado)",
         ...ROLES.map((r) => {
           const next: ThreePhaseRole = r === "A" ? "B" : r === "B" ? "C" : "A";
-          return `V${PAIR[r]} = V${r}N − V${next}N = ${pol(V[r])} − ${pol(V[next])} = ${pol(g.lineVoltages[r], "V")}`;
+          return `E${PAIR[r]} = E${r}N − E${next}N = ${pol(V[r])} − ${pol(V[next])} = ${pol(g.lineVoltages[r], "V")}`;
         })
       );
     }
   } else {
     lines.push(
-      "# Tensões (Δ: cada fonte está entre duas linhas, VL = VF)",
-      `VAB = ${pol(V.A, "V")};  VBC = ${pol(V.B, "V")};  VCA = ${pol(V.C, "V")}`,
-      `LKT na malha: VAB + VBC + VCA = ${pol(add(add(V.A, V.B), V.C), "V")}`
+      "# Tensões (gerador em Δ: EL = Eφ, cada enrolamento entre duas linhas)",
+      `EAB = ${pol(V.A, "V")} (referência);  EBC = ${pol(V.B, "V")};  ECA = ${pol(V.C, "V")}`,
+      `Malha do triângulo: EAB + EBC + ECA = ${pol(add(add(V.A, V.B), V.C), "V")}`
     );
+    if (g.balanced) {
+      lines.push(
+        "# Correntes nos enrolamentos e nas linhas (Δ: IAa = IBA − IAC)",
+        `IBA = ${pol(g.phaseCurrents.A, "A", 3)};  IAa = √3·IBA∠−30° = ${pol(g.lineCurrents.A, "A", 3)}`
+      );
+    }
   }
 
   if (g.voltageUnbalance >= 0.01) {
@@ -156,7 +180,7 @@ function loadBlock(
   g: ThreePhaseGroupAnalysis,
   members: CircuitElement[],
   frequency: number,
-  sourcePhase: Record<ThreePhaseRole, C> | null
+  hasYSource: boolean
 ): CalculationBlock {
   const lines: string[] = [];
   const Z = Object.fromEntries(
@@ -164,92 +188,113 @@ function loadBlock(
   ) as Record<ThreePhaseRole, C>;
   const V = g.phaseVoltages;
   const I = g.phaseCurrents;
+  const L = g.lineVoltages;
 
-  lines.push("# Impedâncias (forma retangular → polar)");
+  lines.push("# Impedâncias (retangular → polar)");
   if (g.balanced) {
-    lines.push(`Z = ${rect(Z.A, "Ω")} = ${pol(Z.A, "Ω")}   (φ = ${n(arg(Z.A))}°, FP = cos φ = ${n(Math.cos((arg(Z.A) * Math.PI) / 180), 3)})`);
+    lines.push(`Z1 = Z2 = Z3 = ${rect(Z.A, "Ω")} = ${pol(Z.A, "Ω")}   (θ = ${n(arg(Z.A))}°, cos θ = ${n(Math.cos((arg(Z.A) * Math.PI) / 180), 3)})`);
   } else {
-    ROLES.forEach((r) =>
-      lines.push(`Z${g.connection === "Y" ? r : PAIR[r]} = ${rect(Z[r], "Ω")} = ${pol(Z[r], "Ω")}`)
-    );
+    ROLES.forEach((r) => lines.push(`${nm.z(r)} = ${rect(Z[r], "Ω")} = ${pol(Z[r], "Ω")}`));
   }
 
   if (g.connection === "Y") {
     const shift = g.neutralShift ? abs(g.neutralShift) : 0;
 
-    if (shift > 1e-6 && sourcePhase) {
-      const Y = Object.fromEntries(ROLES.map((r) => [r, div(c(1), Z[r])])) as Record<ThreePhaseRole, C>;
-      const num = ROLES.reduce((s, r) => add(s, mul(sourcePhase[r], Y[r])), c(0));
-      const den = ROLES.reduce((s, r) => add(s, Y[r]), c(0));
+    if (shift > 1e-6) {
+      /* Apostila, eqs. 23.38 a 23.40 (carga em Y a três fios). */
+      const D = add(add(mul(Z.A, Z.B), mul(Z.A, Z.C)), mul(Z.B, Z.C));
       lines.push(
-        "# Deslocamento do neutro (sem fio de neutro): Millman",
-        `YA = 1/ZA = ${rect(Y.A, "S", 4)};  YB = ${rect(Y.B, "S", 4)};  YC = ${rect(Y.C, "S", 4)}`,
-        "VnN = (VAN·YA + VBN·YB + VCN·YC) / (YA + YB + YC)",
-        `VnN = (${rect(num, "", 3)}) / (${rect(den, "", 4)}) = ${pol(div(num, den), "V")}`,
-        "# Tensões nas fases da carga: Van = VAN − VnN",
-        ...ROLES.map((r) => `V${r.toLowerCase()}n = ${pol(sourcePhase[r])} − ${pol(g.neutralShift!)} = ${pol(V[r], "V")}`)
-      );
-    } else if (g.balanced) {
-      lines.push(
-        "# Tensão de fase (Y: VF = VL/√3)",
-        `VF = ${n(g.lineVoltage)}/1,732 = ${n(g.phaseVoltage)} V;  VAN = ${pol(V.A, "V")}`
+        "# Carga em Y a três fios, desequilibrada (apostila, eqs. 23.38 a 23.40)",
+        `Linhas: EAB = ${pol(L.A, "V")};  EBC = ${pol(L.B, "V")};  ECA = ${pol(L.C, "V")}`,
+        `Denominador: Z1Z2 + Z1Z3 + Z2Z3 = ${pol(D, "Ω²")}`,
+        `Ian = (EAB·Z3 − ECA·Z2)/(Z1Z2 + Z1Z3 + Z2Z3) = ${pol(I.A, "A", 3)}`,
+        `Ibn = (EBC·Z1 − EAB·Z3)/(Z1Z2 + Z1Z3 + Z2Z3) = ${pol(I.B, "A", 3)}`,
+        `Icn = (ECA·Z2 − EBC·Z1)/(Z1Z2 + Z1Z3 + Z2Z3) = ${pol(I.C, "A", 3)}`,
+        "# Tensões de fase na carga: Van = Ian·Z1, Vbn = Ibn·Z2, Vcn = Icn·Z3",
+        ...ROLES.map((r) => `${nm.ev(g, r)} = ${pol(I[r])} · ${pol(Z[r])} = ${pol(V[r], "V")}`),
+        hasYSource
+          ? `Deslocamento do neutro (n em relação a N): VnN = ${pol(g.neutralShift!, "V")} — sem o neutro, as tensões de fase deixam de ser iguais às do gerador.`
+          : "As tensões de fase da carga ficam diferentes entre si: o ponto n não está preso a um neutro."
       );
     } else {
       lines.push(
-        sourcePhase
-          ? "# Tensões de fase (com neutro, cada fase fica com a tensão do gerador)"
-          : "# Tensões nas fases da carga (gerador em Δ: obtidas da solução nodal)",
-        ...ROLES.map((r) => `V${r}N = ${pol(V[r], "V")}`)
+        g.balanced
+          ? "# Tensões de fase (Y: Vφ = Eφ = EL/√3)"
+          : "# Tensões de fase (Y a quatro fios: Vφ = Eφ em cada fase, eq. 23.34)",
+        g.balanced
+          ? `Vφ = ${n(g.lineVoltage)}/1,732 = ${n(g.phaseVoltage)} V;  Van = ${pol(V.A, "V")}`
+          : ROLES.map((r) => `${nm.ev(g, r)} = ${pol(V[r], "V")}`).join(";  "),
+        "# Correntes (Y: IL = Iφ;  Iφ = Vφ/Zφ, eq. 23.35)"
       );
-    }
-
-    lines.push("# Correntes (Y: corrente de linha = corrente de fase)");
-    if (g.balanced) {
-      lines.push(
-        `IA = VAN/Z = ${pol(V.A, "V")} / ${pol(Z.A, "Ω")} = ${pol(I.A, "A", 3)}`,
-        `IB = IA∠${g.sequence === "ACB" ? "+" : "−"}120° = ${pol(I.B, "A", 3)};  IC = ${pol(I.C, "A", 3)}`
-      );
-    } else {
-      const vn = shift > 1e-6 ? (r: string) => `V${r.toLowerCase()}n` : (r: string) => `V${r}N`;
-      ROLES.forEach((r) =>
-        lines.push(`I${r} = ${vn(r)}/Z${r} = ${pol(V[r], "V")} / ${pol(Z[r], "Ω")} = ${pol(I[r], "A", 3)}`)
-      );
+      if (g.balanced) {
+        lines.push(
+          `Ian = Van/Z1 = ${pol(V.A, "V")} / ${pol(Z.A, "Ω")} = ${pol(I.A, "A", 3)}`,
+          `Ibn = ${pol(I.B, "A", 3)};  Icn = ${pol(I.C, "A", 3)}  (mesmo módulo, defasadas de 120°)`
+        );
+      } else {
+        ROLES.forEach((r) =>
+          lines.push(`${nm.ip(g, r)} = ${nm.ev(g, r)}/${nm.z(r)} = ${pol(V[r], "V")} / ${pol(Z[r], "Ω")} = ${pol(I[r], "A", 3)} = ${rect(I[r], "A", 2)}`)
+        );
+      }
     }
 
     if (g.neutralCurrentPhasor) {
       lines.push(
-        `IA + IB + IC = ${rect(I.A, "", 3)} + ${rect(I.B, "", 3)} + ${rect(I.C, "", 3)} = ${pol(g.neutralCurrentPhasor, "A", 3)}` +
+        `IN = Ian + Ibn + Icn = ${pol(g.neutralCurrentPhasor, "A", 3)}` +
           (abs(g.neutralCurrentPhasor) < 1e-6
             ? g.balanced
-              ? "  (equilibrado: neutro sem corrente)"
-              : "  (sem fio de neutro, a soma é zero)"
-            : "  (= corrente no neutro)")
+              ? "  (carga equilibrada: IN = 0)"
+              : "  (sem neutro, a soma é zero)"
+            : "  (eq. 23.36: corrente no neutro)")
       );
     }
   } else {
     lines.push(
-      "# Tensões (Δ: cada Z está entre duas linhas, VF = VL)",
-      `VAB = ${pol(V.A, "V")};  VBC = ${pol(V.B, "V")};  VCA = ${pol(V.C, "V")}`,
-      "# Correntes de fase"
+      "# Tensões (carga em Δ: Vφ = EL)",
+      `Vab = ${pol(V.A, "V")};  Vbc = ${pol(V.B, "V")};  Vca = ${pol(V.C, "V")}`,
+      "# Correntes de fase (Iφ = Vφ/Zφ)"
     );
     ROLES.forEach((r) =>
-      lines.push(`I${PAIR[r]} = V${PAIR[r]}/Z${PAIR[r]} = ${pol(V[r], "V")} / ${pol(Z[r], "Ω")} = ${pol(I[r], "A", 3)}`)
+      lines.push(`${nm.ip(g, r)} = ${nm.ev(g, r)}/${nm.z(r)} = ${pol(V[r], "V")} / ${pol(Z[r], "Ω")} = ${pol(I[r], "A", 3)}`)
     );
-    lines.push("# Correntes de linha (LKC nos nós do triângulo)");
+    lines.push("# Correntes de linha (lei de Kirchhoff para correntes nos nós a, b, c)");
     ROLES.forEach((r) =>
       lines.push(
-        `I${r} = I${PAIR[r]} − I${PAIR[PREV[r]]} = ${pol(I[r])} − ${pol(I[PREV[r]])} = ${pol(g.lineCurrents[r], "A", 3)}`
+        `${nm.il(r)} = ${nm.ip(g, r)} − ${nm.ip(g, PREV[r])} = ${pol(I[r])} − ${pol(I[PREV[r]])} = ${pol(g.lineCurrents[r], "A", 3)}`
       )
     );
     if (g.balanced) {
-      lines.push(`Equilibrado: IL = √3·IF = 1,732 · ${n(g.phaseCurrent, 3)} = ${n(g.lineCurrent, 3)} A, defasada −30° (ABC)`);
+      lines.push(`Carga equilibrada: IL = √3·Iφ = 1,732 · ${n(g.phaseCurrent, 3)} = ${n(g.lineCurrent, 3)} A, atrasada 30° da corrente de fase (ABC)`);
     }
   }
 
   lines.push(...powerLines(g, true));
 
+  /* Método dos dois wattímetros (linha C comum). */
+  lines.push(
+    "# Método dos dois wattímetros (bobinas de corrente nas linhas A e B, linha C comum)",
+    `W1 = Re{Vac·IAa*} = ${n(g.wattmeters.w1, 1)} W;  W2 = Re{Vbc·IBb*} = ${n(g.wattmeters.w2, 1)} W`,
+    g.wattmeters.valid
+      ? `W1 + W2 = ${n(g.wattmeters.sum, 1)} W = PT`
+      : `W1 + W2 = ${n(g.wattmeters.sum, 1)} W ≠ PT (há corrente no neutro: o método vale para sistemas a três fios)`
+  );
+
   if (!g.balanced) {
     lines.push(...sequenceLines(g));
+  }
+
+  /* Correção do FP para 0,92 (apostila 8.11), se a carga for indutiva abaixo disso. */
+  const correction = correctPowerFactor(g.activePower, g.reactivePower, g.lineVoltage, frequency, 0.92);
+  if (correction && correction.needed) {
+    const theta = Math.acos(g.powerFactor);
+    const thetaNew = Math.acos(0.92);
+    lines.push(
+      "# Correção do fator de potência para 0,92 (apostila, seção 8.11)",
+      `θ = arccos ${n(g.powerFactor, 3)} = ${n((theta * 180) / Math.PI)}°;  θ′ = arccos 0,92 = ${n((thetaNew * 180) / Math.PI)}°`,
+      `QC = PT·(tan θ − tan θ′) = ${n(g.activePower, 1)}·(${n(Math.tan(theta), 4)} − ${n(Math.tan(thetaNew), 4)}) = ${n(correction.capacitorReactive, 1)} VAR;  QCφ = QC/3 = ${n(correction.perPhaseReactive, 1)} VAR`,
+      `CΔ = QCφ/(ω·EL²) = ${n(correction.perPhaseReactive, 1)}/(${n(2 * Math.PI * frequency, 1)}·${n(g.lineVoltage)}²) = ${n(correction.deltaCapacitance * 1e6, 2)} µF por fase;  CY = 3·CΔ = ${n(correction.starCapacitance * 1e6, 2)} µF`,
+      `IL = ST/(√3·EL): antes ${n(correction.lineCurrentBefore, 2)} A, depois ${n(correction.lineCurrentAfter, 2)} A`
+    );
   }
 
   if (g.impedances && g.equivalentImpedances) {
@@ -263,16 +308,16 @@ function loadBlock(
       );
     } else if (g.connection === "D") {
       lines.push(
-        "Kennelly: ZA = ZAB·ZCA/ΣZ, ZB = ZAB·ZBC/ΣZ, ZC = ZBC·ZCA/ΣZ",
-        `ΣZ = ZAB + ZBC + ZCA = ${rect(add(add(Z.A, Z.B), Z.C), "Ω")}`,
-        ...ROLES.map((r) => `Z${r} = ${rect(c(eq[r].resistance, eq[r].reactance), "Ω")}`)
+        "Kennelly (Δ → Y): Za = Z1·Z3/ΣZ, Zb = Z1·Z2/ΣZ, Zc = Z2·Z3/ΣZ",
+        `ΣZ = Z1 + Z2 + Z3 = ${rect(add(add(Z.A, Z.B), Z.C), "Ω")}`,
+        ...ROLES.map((r) => `Z${r.toLowerCase()} = ${rect(c(eq[r].resistance, eq[r].reactance), "Ω")}`)
       );
     } else {
       const P = add(add(mul(Z.A, Z.B), mul(Z.B, Z.C)), mul(Z.C, Z.A));
       lines.push(
-        "Kennelly: P = ZA·ZB + ZB·ZC + ZC·ZA;  ZAB = P/ZC, ZBC = P/ZA, ZCA = P/ZB",
+        "Kennelly (Y → Δ): P = Z1·Z2 + Z2·Z3 + Z3·Z1;  Zab = P/Z3, Zbc = P/Z1, Zca = P/Z2",
         `P = ${rect(P, "Ω²", 1)}`,
-        ...ROLES.map((r) => `Z${PAIR[r]} = ${rect(c(eq[r].resistance, eq[r].reactance), "Ω")}`)
+        ...ROLES.map((r) => `Z${PAIR[r].toLowerCase()} = ${rect(c(eq[r].resistance, eq[r].reactance), "Ω")}`)
       );
     }
   }
@@ -356,9 +401,7 @@ export function buildCalculationBlocks(
     return genericBlocks(elements, results);
   }
 
-  /* Tensões de fase do primeiro gerador em Y (para Millman). */
-  const ySource = groups.find((g) => g.kind === "source" && g.connection === "Y");
-  const sourcePhase = ySource ? ySource.phaseVoltages : null;
+  const hasYSource = groups.some((g) => g.kind === "source" && g.connection === "Y");
 
   const blocks: CalculationBlock[] = [
     {
@@ -366,7 +409,9 @@ export function buildCalculationBlocks(
       lines: [
         `f = ${n(frequency, 1)} Hz; fasores em valor eficaz; ângulos em graus.`,
         "Reatâncias informadas em 60 Hz: X(f) = X60·f/60 (indutiva) ou X60·60/f (capacitiva).",
-        "Sequência ABC: VAN∠0°, VBN∠−120°, VCN∠+120°; VAB = VAN − VBN.",
+        "Notação da apostila: gerador com nós A, B, C, N e tensões E; carga com nós a, b, c, n, tensões V e impedâncias Z1, Z2, Z3.",
+        "Correntes de linha IAa, IBb, ICc; de fase Ian (Y) ou Iab (Δ); Fp atrasado = indutivo, adiantado = capacitivo.",
+        "Sequência ABC: gerador Y com EAN∠0° (referência); gerador Δ com EAB∠0° (referência).",
       ],
     },
   ];
@@ -378,7 +423,7 @@ export function buildCalculationBlocks(
   groups
     .filter((g) => g.kind === "load")
     .forEach((g) =>
-      blocks.push(loadBlock(g, getGroupMembers(elements, g.groupId), frequency, sourcePhase))
+      blocks.push(loadBlock(g, getGroupMembers(elements, g.groupId), frequency, hasYSource))
     );
 
   return blocks;

@@ -1,3 +1,4 @@
+import { getGroupTerminalPoint } from "./threePhaseLayout";
 import type {
   CircuitElement,
 } from "../../core/CircuitElement";
@@ -122,6 +123,15 @@ export function getTerminalPosition(
     CircuitTerminalSide =
       terminal?.side ??
       "right";
+
+  /* Bloco trifásico: o terminal fica na ponta da estrela/triângulo. */
+  const groupPoint = element.group
+    ? getGroupTerminalPoint(element, side)
+    : null;
+
+  if (groupPoint) {
+    return { x: groupPoint.x, y: groupPoint.y, side: groupPoint.exit };
+  }
 
   return {
     x:

@@ -1,3 +1,4 @@
+import { getMemberSegment } from "./threePhaseLayout";
 import { getElementIdFromTerminalId } from "../../core/CircuitConnection";
 import type {
   CircuitConnection,
@@ -227,6 +228,33 @@ function buildObstacles(
 
   elements.forEach(
     (element) => {
+      /*
+       * Bloco trifásico (estrela/triângulo): não bloqueia, para o
+       * fio do neutro poder sair do centro como na apostila.
+       */
+      if (element.group) {
+        /*
+         * Bloqueia só o traço do desenho (os braços da estrela ou
+         * os lados do triângulo) e as pontas, para os fios não
+         * correrem por cima do símbolo nem passarem pelos terminais
+         * de outra fase. O começo dos braços da estrela fica livre
+         * para o neutro sair do centro.
+         */
+        const { from, to } = getMemberSegment(element.group);
+        const startAt = element.group.connection === "Y" ? 0.3 : 0;
+        const length = Math.hypot(to.x - from.x, to.y - from.y);
+        const steps = Math.ceil(length / (STEP / 2));
+
+        for (let i = 0; i <= steps; i++) {
+          const t = startAt + ((1 - startAt) * i) / steps;
+          const x = element.x + from.x + (to.x - from.x) * t;
+          const y = element.y + from.y + (to.y - from.y) * t;
+          blocked[toCell(y, ROWS) * COLUMNS + toCell(x, COLUMNS)] = 1;
+        }
+
+        return;
+      }
+
       /*
        * Bloqueia o corpo do componente (sem os terminais
        * das bordas) mais uma margem, para os fios não

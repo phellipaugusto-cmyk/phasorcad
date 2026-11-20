@@ -1,3 +1,6 @@
+import { ThreePhaseGroupView } from "./ThreePhaseGroupView";
+import { getGroupByElementId, isInternalGroupConnection } from "../../core/threePhase";
+import { getElementSize } from "./threePhaseLayout";
 import {
   useCallback,
   useEffect,
@@ -48,8 +51,6 @@ import type {
 import {
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
-  COMPONENT_HEIGHT,
-  COMPONENT_WIDTH,
   ELEMENT_EDGE_GAP,
   GRID_SIZE,
   clampElementPosition,
@@ -393,8 +394,7 @@ export function Canvas({
           (maximum, element) =>
             Math.max(
               maximum,
-              element.x +
-                COMPONENT_WIDTH +
+              element.x + getElementSize(element).width +
                 ELEMENT_EDGE_GAP
             ),
           0
@@ -405,8 +405,7 @@ export function Canvas({
           (maximum, element) =>
             Math.max(
               maximum,
-              element.y +
-                COMPONENT_HEIGHT +
+              element.y + getElementSize(element).height +
                 ELEMENT_EDGE_GAP
             ),
           0
@@ -527,10 +526,20 @@ export function Canvas({
       null
     );
 
+  /* Fios internos dos blocos trifásicos ficam por conta do desenho. */
+  const groupByElementId = getGroupByElementId(elements);
+  const visibleConnections =
+    groupByElementId.size === 0
+      ? connections
+      : connections.filter(
+          (connection) =>
+            !isInternalGroupConnection(connection, groupByElementId)
+        );
+
   const connectedTerminalIds =
     new Set<string>();
 
-  connections.forEach(
+  visibleConnections.forEach(
     (connection) => {
       connectedTerminalIds.add(
         connection.fromTerminalId
@@ -742,8 +751,7 @@ export function Canvas({
     const contentWidth = Math.max(
       ...elements.map(
         (element) =>
-          element.x +
-          COMPONENT_WIDTH +
+          element.x + getElementSize(element).width +
           ELEMENT_EDGE_GAP
       )
     );
@@ -751,8 +759,7 @@ export function Canvas({
     const contentHeight = Math.max(
       ...elements.map(
         (element) =>
-          element.y +
-          COMPONENT_HEIGHT +
+          element.y + getElementSize(element).height +
           ELEMENT_EDGE_GAP
       )
     );
@@ -787,7 +794,7 @@ export function Canvas({
     const maxX = Math.max(
       ...elements.map(
         (element) =>
-          element.x + COMPONENT_WIDTH
+          element.x + getElementSize(element).width
       )
     );
 
@@ -800,7 +807,7 @@ export function Canvas({
     const maxY = Math.max(
       ...elements.map(
         (element) =>
-          element.y + COMPONENT_HEIGHT
+          element.y + getElementSize(element).height
       )
     );
 
@@ -1306,7 +1313,7 @@ export function Canvas({
       >
         <CircuitConnectionsSvg
           connections={
-            connections
+            visibleConnections
           }
           elements={
             elements
@@ -1327,7 +1334,24 @@ export function Canvas({
         />
 
         {elements.map(
-          (element) => (
+          (element) => element.group ? (
+            element.group.role === "A" ? (
+              <ThreePhaseGroupView
+                key={element.id}
+                members={elements.filter(
+                  (item) => item.group?.id === element.group?.id
+                )}
+                selectedElementId={selectedElementId}
+                selectedOriginTerminalId={
+                  selectedOriginTerminal?.id ?? null
+                }
+                connectedTerminalIds={connectedTerminalIds}
+                onStartDrag={startDrag}
+                onSelectElement={selectElement}
+                onSelectTerminal={selectTerminal}
+              />
+            ) : null
+          ) : (
             <CircuitComponent
               key={
                 element.id

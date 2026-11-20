@@ -15,9 +15,10 @@ import {
  * Blocos trifásicos EQUILIBRADOS montados com componentes de dois
  * terminais (fontes e impedâncias), já ligados entre si em Y ou Δ.
  *
- * Convenções (sequência ABC, referência V_AN = 0°):
- *   Y: V_AN ∠0°, V_BN ∠−120°, V_CN ∠+120°
- *   Δ: V_AB ∠+30°, V_BC ∠−90°, V_CA ∠+150°   (V_L = √3·V_F)
+ * Convenções da apostila (sequência ABC):
+ *   Gerador Y: E_AN ∠0° (referência), E_BN ∠−120°, E_CN ∠+120°
+ *              (logo E_AB = √3·E_AN ∠30°)
+ *   Gerador Δ: E_AB ∠0° (referência), E_BC ∠−120°, E_CA ∠+120°
  * Sequência ACB troca B e C.
  *
  * Gerador: `value` dos membros = tensão de FASE (Y) ou de LINHA (Δ).
@@ -40,8 +41,8 @@ const Y_ANGLES: Record<"ABC" | "ACB", Record<ThreePhaseRole, number>> = {
 };
 
 const D_ANGLES: Record<"ABC" | "ACB", Record<ThreePhaseRole, number>> = {
-  ABC: { A: 30, B: -90, C: 150 },
-  ACB: { A: -30, B: 90, C: -150 },
+  ABC: { A: 0, B: -120, C: 120 },
+  ACB: { A: 0, B: 120, C: -120 },
 };
 
 export function getSourceRoleAngle(group: ThreePhaseGroup): number {
@@ -62,6 +63,18 @@ export function getMemberName(group: ThreePhaseGroup): string {
       ? `V${suffix}N`
       : `V${suffix}`
     : `Z${suffix}`;
+}
+
+/* Nome exibido (apostila): EAN / EAB no gerador, Z1 / Z2 / Z3 na carga. */
+export function getMemberDisplayName(group: ThreePhaseGroup): string {
+  const pair: Record<ThreePhaseRole, string> = { A: "AB", B: "BC", C: "CA" };
+  const index: Record<ThreePhaseRole, string> = { A: "1", B: "2", C: "3" };
+
+  if (group.kind === "load") {
+    return `Z${index[group.role]}`;
+  }
+
+  return group.connection === "Y" ? `E${group.role}N` : `E${pair[group.role]}`;
 }
 
 /*
@@ -242,7 +255,7 @@ export function createThreePhaseSource(
   const value = connection === "Y" ? lineVoltage / Math.sqrt(3) : lineVoltage;
   const phasors = options.phasors;
 
-  const elements = ROLES.map((role, index): CircuitElement => {
+  const elements = ROLES.map((role): CircuitElement => {
     const group: ThreePhaseGroup = {
       id: groupId,
       kind: "source",
@@ -256,11 +269,11 @@ export function createThreePhaseSource(
     return {
       id,
       type: "source",
-      label: `${label} ${getMemberName(group)}`,
+      label: `${label} ${getMemberDisplayName(group)}`,
       value: phasors ? phasors[role].value : value,
       phase: phasors ? phasors[role].phase : getSourceRoleAngle(group),
       x,
-      y: y + index * GROUP_ROW_SPACING,
+      y,
       terminals: createCircuitTerminals(id),
       group,
       ...(connection === "D"
@@ -290,7 +303,7 @@ export function createThreePhaseLoad(
   const label = options.label ?? groupId;
   const balanced = options.impedances === undefined;
 
-  const elements = ROLES.map((role, index): CircuitElement => {
+  const elements = ROLES.map((role): CircuitElement => {
     const group: ThreePhaseGroup = {
       id: groupId,
       kind: "load",
@@ -304,11 +317,11 @@ export function createThreePhaseLoad(
     return {
       id,
       type: "impedance",
-      label: `${label} ${getMemberName(group)}`,
+      label: `${label} ${getMemberDisplayName(group)}`,
       value: getImpedanceMagnitude(z),
       impedance: { ...z },
       x,
-      y: y + index * GROUP_ROW_SPACING,
+      y,
       terminals: createCircuitTerminals(id),
       group,
     };
@@ -466,6 +479,80 @@ export function rebuildGroup(
     ],
     connections: [...external, ...rebuilt.connections],
   };
+}
+
+/* Fio interno de um bloco (estrela/triângulo), que o desenho já mostra. */
+export function isInternalGroupConnection(
+  connection: CircuitConnection,
+  groupByElementId: ReadonlyMap<string, string>
+): boolean {
+  const elementOf = (terminalId: string) => terminalId.slice(0, terminalId.lastIndexOf(":"));
+  const from = groupByElementId.get(elementOf(connection.fromTerminalId));
+  const to = groupByElementId.get(elementOf(connection.toTerminalId));
+
+  return from !== undefined && from === to;
+}
+
+export function getGroupByElementId(elements: CircuitElement[]): Map<string, string> {
+  return new Map(
+    elements.filter((e) => e.group).map((e) => [e.id, (e.group as ThreePhaseGroup).id])
+  );
+}
+
+/* Coloca os membros de cada bloco na posição do membro A. */
+export function alignGroups(elements: CircuitElement[]): CircuitElement[] {
+  const anchor = new Map<string, { x: number; y: number }>();
+
+  elements.forEach((e) => {
+    if (e.group && e.group.role === "A") {
+      anchor.set(e.group.id, { x: e.x, y: e.y });
+    }
+  });
+
+  let changed = false;
+  const next = elements.map((e) => {
+    const position = e.group ? anchor.get(e.group.id) : undefined;
+    if (position && (e.x !== position.x || e.y !== position.y)) {
+      changed = true;
+      return { ...e, ...position };
+    }
+    return e;
+  });
+
+  /* Sem mudança, a mesma lista (o React não re-renderiza). */
+  return changed ? next : elements;
+}
+
+/*
+ * Os três membros de um bloco são desenhados juntos (estrela ou
+ * triângulo): se um deles foi movido, os outros acompanham.
+ */
+export function syncGroupPositions(
+  previous: CircuitElement[],
+  next: CircuitElement[]
+): CircuitElement[] {
+  const previousById = new Map(previous.map((e) => [e.id, e]));
+  const moved = new Map<string, { x: number; y: number }>();
+
+  next.forEach((element) => {
+    const before = previousById.get(element.id);
+
+    if (element.group && before && (before.x !== element.x || before.y !== element.y)) {
+      moved.set(element.group.id, { x: element.x, y: element.y });
+    }
+  });
+
+  if (moved.size === 0) {
+    return next;
+  }
+
+  return next.map((element) => {
+    const position = element.group ? moved.get(element.group.id) : undefined;
+
+    return position && (element.x !== position.x || element.y !== position.y)
+      ? { ...element, ...position }
+      : element;
+  });
 }
 
 /*

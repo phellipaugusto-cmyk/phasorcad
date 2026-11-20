@@ -33,7 +33,11 @@ export type ThreePhasePresetKind =
   | "YYn-u"
   | "YY-u"
   | "YD-u"
-  | "YYn-us";
+  | "YYn-us"
+  | "ap-8.18"
+  | "ap-8.1"
+  | "ap-8.2"
+  | "ap-8.34";
 
 export const THREE_PHASE_PRESETS: { kind: ThreePhasePresetKind; title: string }[] = [
   { kind: "YY", title: "Trifásico Y-Y (com neutro)" },
@@ -44,7 +48,57 @@ export const THREE_PHASE_PRESETS: { kind: ThreePhasePresetKind; title: string }[
   { kind: "YY-u", title: "Desequilibrado Y-Y sem neutro" },
   { kind: "YD-u", title: "Desequilibrado Y-Δ" },
   { kind: "YYn-us", title: "Gerador desequilibrado Y-Y com neutro" },
+  { kind: "ap-8.18", title: "Apostila Fig. 8.18 — Y-Y com neutro, 120 V, 3 + j4 Ω" },
+  { kind: "ap-8.1", title: "Apostila Ex. 8.1 — Y a 4 fios desequilibrada" },
+  { kind: "ap-8.2", title: "Apostila Ex. 8.2 — rompimento do neutro" },
+  { kind: "ap-8.34", title: "Apostila Fig. 8.34 — indicador de sequência" },
 ];
+
+/*
+ * Exemplos da apostila (Circuitos Elétricos II, cap. 8), com as
+ * respostas dela para conferir:
+ *   Fig. 8.18: E_AN = 120 V ∠0°, Z = 3 + j4 Ω → I = 24 A ∠−53,13°
+ *   Ex. 8.1:   220/127 V, Z1 = 12,7 Ω, Z2 = 8 + j6 Ω, Z3 = 25,4 Ω
+ *              → I_N = 4,23 A ∠−171,04°
+ *   Ex. 8.2:   o mesmo sem neutro → V_an = 145,7 V ∠3,50°,
+ *              V_bn = 110,7 V ∠−114,04°, V_cn = 127,1 V ∠110,77°
+ *   Fig. 8.34: E_AB = 200 V ∠0°, Z1 = 16 µF, Z2 = Z3 = 200 Ω
+ *              (lâmpadas) → I_bn ≈ 0,91 A, I_cn ≈ 0,26 A (ABC)
+ */
+interface PresetSpec {
+  source: "Y" | "D";
+  lineVoltage: number;
+  load: "Y" | "D";
+  impedance: { resistance: number; reactance: number };
+  impedances?: Record<"A" | "B" | "C", { resistance: number; reactance: number }>;
+  phasors?: Record<"A" | "B" | "C", { value: number; phase: number }>;
+  neutral: boolean;
+}
+
+const EX_8_1_IMPEDANCES = {
+  A: { resistance: 12.7, reactance: 0 },
+  B: { resistance: 8, reactance: 6 },
+  C: { resistance: 25.4, reactance: 0 },
+};
+
+const SPECS: Partial<Record<ThreePhasePresetKind, PresetSpec>> = {
+  "ap-8.18": { source: "Y", lineVoltage: 120 * Math.sqrt(3), load: "Y", impedance: { resistance: 3, reactance: 4 }, neutral: true },
+  "ap-8.1": { source: "Y", lineVoltage: 220, load: "Y", impedance: EX_8_1_IMPEDANCES.A, impedances: EX_8_1_IMPEDANCES, neutral: true },
+  "ap-8.2": { source: "Y", lineVoltage: 220, load: "Y", impedance: EX_8_1_IMPEDANCES.A, impedances: EX_8_1_IMPEDANCES, neutral: false },
+  "ap-8.34": {
+    source: "D",
+    lineVoltage: 200,
+    load: "Y",
+    impedance: { resistance: 200, reactance: 0 },
+    impedances: {
+      /* 16 µF em 60 Hz: X = −1/(2π·60·16 µF) */
+      A: { resistance: 0, reactance: -1 / (2 * Math.PI * 60 * 16e-6) },
+      B: { resistance: 200, reactance: 0 },
+      C: { resistance: 200, reactance: 0 },
+    },
+    neutral: false,
+  },
+};
 
 /* Gerador desequilibrado do exemplo (V_AN, V_BN, V_CN). */
 export const THREE_PHASE_UNBALANCED_SOURCE = {
@@ -67,16 +121,19 @@ export function createThreePhasePreset(kind: ThreePhasePresetKind): {
   connections: CircuitConnection[];
   frequency: number;
 } {
-  const sourceConnection = kind[0] === "Y" ? "Y" : "D";
-  const loadConnection = kind[1] === "Y" ? "Y" : "D";
+  const spec = SPECS[kind];
+  const sourceConnection = spec ? spec.source : kind[0] === "Y" ? "Y" : "D";
+  const loadConnection = spec ? spec.load : kind[1] === "Y" ? "Y" : "D";
   const unbalanced = kind.endsWith("-u");
   const unbalancedSource = kind.endsWith("-us");
-  const withNeutral = kind === "YY" || kind === "YYn-u" || kind === "YYn-us";
+  const withNeutral = spec
+    ? spec.neutral
+    : kind === "YY" || kind === "YYn-u" || kind === "YYn-us";
 
   const source = createThreePhaseSource({
     groupId: "G",
     connection: sourceConnection,
-    lineVoltage: THREE_PHASE_PRESET_LINE_VOLTAGE,
+    lineVoltage: spec ? spec.lineVoltage : THREE_PHASE_PRESET_LINE_VOLTAGE,
     ...(unbalancedSource ? { phasors: THREE_PHASE_UNBALANCED_SOURCE } : {}),
     label: "Gerador",
     x: 40,
@@ -85,8 +142,12 @@ export function createThreePhasePreset(kind: ThreePhasePresetKind): {
   const load = createThreePhaseLoad({
     groupId: "C",
     connection: loadConnection,
-    impedance: THREE_PHASE_PRESET_IMPEDANCE,
-    ...(unbalanced ? { impedances: THREE_PHASE_UNBALANCED_IMPEDANCES } : {}),
+    impedance: spec ? spec.impedance : THREE_PHASE_PRESET_IMPEDANCE,
+    ...(spec?.impedances
+      ? { impedances: spec.impedances }
+      : unbalanced
+        ? { impedances: THREE_PHASE_UNBALANCED_IMPEDANCES }
+        : {}),
     label: "Carga",
     x: 520,
     y: 60,

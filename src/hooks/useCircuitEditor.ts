@@ -22,8 +22,10 @@ import {
 import {
   createThreePhaseLoad,
   createThreePhaseSource,
+  alignGroups,
   enforceBalance,
   getGroupIds,
+  syncGroupPositions,
   getGroupMembers,
   rebuildGroup,
 } from "../core/threePhase";
@@ -94,7 +96,7 @@ export function useCircuitEditor() {
     setRawElements,
   ] =
     useState<CircuitElement[]>(
-      loadElements
+      () => alignGroups(loadElements())
     );
 
   /*
@@ -110,7 +112,12 @@ export function useCircuitEditor() {
       setRawElements((current) =>
         enforceBalance(
           current,
-          typeof update === "function" ? update(current) : update
+          alignGroups(
+            syncGroupPositions(
+              current,
+              typeof update === "function" ? update(current) : update
+            )
+          )
         )
       ),
     []

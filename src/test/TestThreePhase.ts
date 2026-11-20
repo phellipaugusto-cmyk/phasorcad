@@ -5,7 +5,7 @@ import { ModifiedNodalAnalysisBuilder } from "../solver/ModifiedNodalAnalysisBui
 import { ComplexLinearSolver } from "../solver/ComplexLinearSolver";
 import { MnaElectricalResultsExtractor } from "../solver/MnaElectricalResultsExtractor";
 import { getCircuitState } from "../solver/CircuitTopology";
-import { analyzeThreePhase, angleDegrees } from "../solver/threePhaseAnalysis";
+import { analyzeThreePhase, angleDegrees, correctPowerFactor } from "../solver/threePhaseAnalysis";
 import { createThreePhasePreset, type ThreePhasePresetKind } from "../data/threePhasePresets";
 import { enforceBalance, rebuildGroup, getGroupMembers } from "../core/threePhase";
 import { serializeCircuit, parseCircuitFile } from "../storage/circuitFile";
@@ -75,7 +75,8 @@ const expected: Record<Extract<ThreePhasePresetKind, "YY" | "YD" | "DY" | "DD">,
     near("I_L/I_F = √3", r.load.currentRatio!.magnitude, Math.sqrt(3), 1e-6);
     near("∠(I_A/I_AB) = −30°", r.load.currentRatio!.angle, -30, 1e-6);
   }
-  near("∠V_AB do gerador (°)", angleDegrees(r.gen.lineVoltages.A), 30, 0.01);
+  /* Apostila: gerador Y tem E_AN ∠0° (E_AB ∠30°); gerador Δ tem E_AB ∠0°. */
+  near("∠E_AB do gerador (°)", angleDegrees(r.gen.lineVoltages.A), kind[0] === "Y" ? 30 : 0, 0.01);
 });
 
 console.log("\nEquivalente Y ↔ Δ");
@@ -275,3 +276,79 @@ console.log("\nGerador desequilibrado (127∠0°, 115∠−125°, 135∠118°; c
 }
 
 console.log(failures === 0 ? "\nTrifásico: todos os testes passaram." : `\nTrifásico: ${failures} FALHA(S).`);
+
+/* ---------- Apostila: wattímetros e correção do FP ---------- */
+{
+  console.log("\nApostila — exercício 1/2: Z = 10∠30° Ω em Y, 380 V (linha)");
+  const p = createThreePhasePreset("YY");
+  const z = { resistance: 10 * Math.cos(Math.PI / 6), reactance: 10 * Math.sin(Math.PI / 6) };
+  const els = p.elements.map((e) =>
+    e.group?.kind === "load" ? { ...e, impedance: z } : e.group?.kind === "source" ? { ...e, value: 380 / Math.sqrt(3) } : e
+  );
+  const r = analyze(els, p.connections.filter((c) => c.id !== "linha-N"));
+  near("Vφ (V) = 219,4", r.load.phaseVoltage, 219.39, 0.01);
+  near("IL (A) = 21,94", r.load.lineCurrent, 21.94, 0.005);
+  near("PT (W) = 12,51 k", r.load.activePower, 12505, 5);
+  near("QT (var) = 7,22 k", r.load.reactivePower, 7220, 5);
+  const ws = [r.load.wattmeters.w1, r.load.wattmeters.w2].sort((a, b) => b - a);
+  near("Ph (W) = 8337", ws[0], 8337, 1);
+  near("Pl (W) = 4168", ws[1], 4168, 1);
+  near("Ph + Pl = PT", r.load.wattmeters.sum, r.load.activePower, 1e-6);
+}
+{
+  console.log("\nApostila — exemplo 8.3: 30 kW, FP 0,8, 380 V → FP 0,95");
+  const c = correctPowerFactor(30000, 22500, 380, 60, 0.95)!;
+  near("QC (kvar) = 12,64", c.capacitorReactive / 1000, 12.64, 0.005);
+  near("CΔ (µF) = 77,4", c.deltaCapacitance * 1e6, 77.4, 0.05);
+  near("CY (µF) = 232,2", c.starCapacitance * 1e6, 232.2, 0.1);
+  near("I antes (A) = 56,98", c.lineCurrentBefore, 56.98, 0.01);
+  near("I depois (A) = 47,98", c.lineCurrentAfter, 47.98, 0.01);
+  console.log("Apostila — exercício 5: 50 kVA, FP 0,7, 220 V → 0,92");
+  const d = correctPowerFactor(35000, 50000 * Math.sin(Math.acos(0.7)), 220, 60, 0.92)!;
+  near("QC (kvar) = 20,8", d.capacitorReactive / 1000, 20.8, 0.05);
+  near("CΔ (µF) = 380", d.deltaCapacitance * 1e6, 380, 1);
+  near("I antes (A) = 131,2", d.lineCurrentBefore, 131.2, 0.05);
+  near("I depois (A) = 99,8", d.lineCurrentAfter, 99.8, 0.05);
+  console.log(failures === 0 ? "Apostila: conferido." : `Apostila: ${failures} FALHA(S).`);
+}
+
+/* ---------- Apostila: exemplos com resposta ---------- */
+{
+  const m = (p: { real: number; imaginary: number }) => Math.hypot(p.real, p.imaginary);
+  const run = (kind: ThreePhasePresetKind) => {
+    const p = createThreePhasePreset(kind);
+    return analyze(p.elements, p.connections);
+  };
+  console.log("\nApostila — Fig. 8.18 (Y-Y, 120 V, Z = 3 + j4)");
+  const a = run("ap-8.18");
+  near("Ian (A) = 24", m(a.load.phaseCurrents.A), 24, 1e-6);
+  near("∠Ian = −53,13°", angleDegrees(a.load.phaseCurrents.A), -53.13, 0.01);
+  near("∠Ibn = −173,13°", angleDegrees(a.load.phaseCurrents.B), -173.13, 0.01);
+  near("EL = 207,8 V", a.gen.lineVoltage, 207.85, 0.01);
+  near("IN = 0", a.load.neutralCurrent!, 0, 1e-6);
+
+  console.log("Apostila — Ex. 8.1 (Y 4 fios, Z1 = 12,7, Z2 = 8 + j6, Z3 = 25,4)");
+  const b = run("ap-8.1");
+  near("I1 = 10 A", m(b.load.phaseCurrents.A), 10, 0.01);
+  near("I2 = 12,7 A ∠−156,87°", angleDegrees(b.load.phaseCurrents.B), -156.87, 0.01);
+  near("I3 = 5 A", m(b.load.phaseCurrents.C), 5, 0.01);
+  near("IN = 4,23 A", b.load.neutralCurrent!, 4.23, 0.005);
+  near("∠IN = −171,04°", angleDegrees(b.load.neutralCurrentPhasor!), -171.04, 0.05);
+
+  console.log("Apostila — Ex. 8.2 (neutro rompido)");
+  const c = run("ap-8.2");
+  near("Van = 145,7 V", m(c.load.phaseVoltages.A), 145.7, 0.1);
+  near("∠Van = 3,50°", angleDegrees(c.load.phaseVoltages.A), 3.5, 0.01);
+  near("Vbn = 110,7 V", m(c.load.phaseVoltages.B), 110.7, 0.1);
+  near("∠Vbn = −114,04°", angleDegrees(c.load.phaseVoltages.B), -114.04, 0.02);
+  near("Vcn = 127,1 V", m(c.load.phaseVoltages.C), 127.1, 0.1);
+  near("Ian = 11,47 A", m(c.load.phaseCurrents.A), 11.47, 0.01);
+  near("Ibn = 11,07 A", m(c.load.phaseCurrents.B), 11.07, 0.01);
+  near("Icn = 5,01 A", m(c.load.phaseCurrents.C), 5.01, 0.01);
+
+  console.log("Apostila — Fig. 8.34 (indicador de sequência, ABC)");
+  const d = run("ap-8.34");
+  near("Ibn ≈ 0,91 A (lâmpada b brilha mais)", m(d.load.phaseCurrents.B), 0.91, 0.01);
+  near("Icn ≈ 0,259 A", m(d.load.phaseCurrents.C), 0.259, 0.002);
+  console.log(failures === 0 ? "Apostila (exemplos): conferido." : `Apostila: ${failures} FALHA(S).`);
+}

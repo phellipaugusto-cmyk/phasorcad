@@ -701,6 +701,7 @@ function App() {
           result={
             result
           }
+          labels={new Map(resolvedElements.map((e) => [e.id, e.label]))}
         />
 
         <hr />
@@ -787,7 +788,7 @@ function App() {
           frequency={frequency}
         />
 
-        <ThreePhasePanel groups={threePhase} />
+        <ThreePhasePanel groups={threePhase} frequency={frequency} />
 
         <MeasurementComparisonPanel
           elements={resolvedElements}

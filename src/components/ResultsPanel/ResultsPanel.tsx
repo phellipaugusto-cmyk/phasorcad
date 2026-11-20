@@ -3,10 +3,13 @@ import { Phasor } from "../../phasors/Phasor";
 
 interface ResultsPanelProps {
   result: CircuitResult;
+  /* Nome exibido de cada componente (id → rótulo). */
+  labels?: ReadonlyMap<string, string>;
 }
 
 export function ResultsPanel({
   result,
+  labels,
 }: ResultsPanelProps) {
 
   const currentPhasor =
@@ -45,7 +48,7 @@ export function ResultsPanel({
                 key={source.elementId}
                 style={{ margin: "2px 0" }}
               >
-                {source.elementId} entrega:{" "}
+                {labels?.get(source.elementId) ?? source.elementId} entrega:{" "}
                 {source.activePower.toFixed(2)} W /{" "}
                 {source.reactivePower.toFixed(2)} var
               </p>

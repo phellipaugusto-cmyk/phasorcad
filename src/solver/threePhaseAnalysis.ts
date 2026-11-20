@@ -82,6 +82,13 @@ export interface ThreePhaseGroupAnalysis {
   sequenceVoltages: { zero: Phasor; positive: Phasor; negative: Phasor };
   voltageUnbalance: number;
   /*
+   * Método dos dois wattímetros (Aron), com a linha C como comum:
+   *   W1 = Re{V_ac · I_Aa*}   (bobina de corrente na linha A)
+   *   W2 = Re{V_bc · I_Bb*}   (bobina de corrente na linha B)
+   * W1 + W2 = P total sempre que I_Aa + I_Bb + I_Cc = 0 (3 fios).
+   */
+  wattmeters: { w1: number; w2: number; sum: number; valid: boolean };
+  /*
    * Só cargas: Z de cada fase (na frequência atual) e o equivalente
    * na outra ligação (Kennelly; equilibrada: Z_Y = Z_Δ/3).
    *   Y: A = Z_A…   Δ: A = Z_AB, B = Z_BC, C = Z_CA
@@ -179,6 +186,69 @@ export function starToDelta(
     A: toImpedance(div(p, c)),
     B: toImpedance(div(p, a)),
     C: toImpedance(div(p, b)),
+  };
+}
+
+/*
+ * Correção do fator de potência (apostila, seção 8.11): banco de
+ * capacitores em paralelo com a carga, em Δ ou em Y.
+ *   Q_C = P·(tan θ − tan θ'),  Q_Cφ = Q_C/3
+ *   C_Δ = Q_Cφ / (ω·E_L²),     C_Y = Q_Cφ / (ω·V_φ²) = 3·C_Δ
+ *   I_L = S / (√3·E_L) antes e depois
+ */
+export interface PowerFactorCorrection {
+  targetPowerFactor: number;
+  activePower: number;
+  reactiveBefore: number;
+  reactiveAfter: number;
+  capacitorReactive: number;
+  perPhaseReactive: number;
+  deltaCapacitance: number;
+  starCapacitance: number;
+  lineCurrentBefore: number;
+  lineCurrentAfter: number;
+  needed: boolean;
+}
+
+export function correctPowerFactor(
+  activePower: number,
+  reactivePower: number,
+  lineVoltage: number,
+  frequency: number,
+  targetPowerFactor: number
+): PowerFactorCorrection | null {
+  if (
+    !(activePower > 0) ||
+    !(lineVoltage > 0) ||
+    !(frequency > 0) ||
+    !(targetPowerFactor > 0 && targetPowerFactor <= 1)
+  ) {
+    return null;
+  }
+
+  const reactiveAfterTarget =
+    activePower * Math.tan(Math.acos(targetPowerFactor));
+  const needed = reactivePower > reactiveAfterTarget + 1e-9;
+  const reactiveAfter = needed ? reactiveAfterTarget : reactivePower;
+  const capacitorReactive = needed ? reactivePower - reactiveAfterTarget : 0;
+  const perPhaseReactive = capacitorReactive / 3;
+  const omega = 2 * Math.PI * frequency;
+  const phaseVoltage = lineVoltage / Math.sqrt(3);
+  const lineCurrent = (q: number) =>
+    Math.hypot(activePower, q) / (Math.sqrt(3) * lineVoltage);
+
+  return {
+    targetPowerFactor,
+    activePower,
+    reactiveBefore: reactivePower,
+    reactiveAfter,
+    capacitorReactive,
+    perPhaseReactive,
+    deltaCapacitance: perPhaseReactive / (omega * lineVoltage ** 2),
+    starCapacitance: perPhaseReactive / (omega * phaseVoltage ** 2),
+    lineCurrentBefore: lineCurrent(reactivePower),
+    lineCurrentAfter: lineCurrent(reactiveAfter),
+    needed,
   };
 }
 
@@ -372,6 +442,22 @@ export function analyzeThreePhase(
             : null,
         sequenceCurrents,
         sequenceVoltages,
+        wattmeters: (() => {
+          /* V_ac = −V_ca; V_bc é a tensão de linha BC. */
+          const vac = scale(lineVoltages.C, -1);
+          const vbc = lineVoltages.B;
+          const w1 = mul(vac, conj(lineCurrents.A)).real;
+          const w2 = mul(vbc, conj(lineCurrents.B)).real;
+          const sumLines = magnitude(
+            add(add(lineCurrents.A, lineCurrents.B), lineCurrents.C)
+          );
+          return {
+            w1,
+            w2,
+            sum: w1 + w2,
+            valid: sumLines < 1e-6 * Math.max(1, positive),
+          };
+        })(),
         voltageUnbalance:
           positiveV > 1e-12
             ? (magnitude(sequenceVoltages.negative) / positiveV) * 100
