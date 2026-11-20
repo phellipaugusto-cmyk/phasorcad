@@ -34,6 +34,7 @@ import {
   type ThreePhaseGroupAnalysis,
 } from "../solver/threePhaseAnalysis";
 import { formatImpedance } from "../core/impedanceModel";
+import { buildCalculationBlocks } from "./calculationSteps";
 import {
   CONTENT_W,
   MARGIN,
@@ -1140,6 +1141,37 @@ export async function buildCircuitReport(
           : "Não há cruzamento de fase por zero nesta faixa de frequência.",
         { size: 9 }
       );
+    }
+  }
+
+  /* ---------- Memória de cálculo ---------- */
+  if (closed) {
+    const blocks = buildCalculationBlocks(elements, results, input.frequency);
+
+    if (blocks.length > 0) {
+      pdf.heading("Memória de cálculo");
+
+      blocks.forEach((block) => {
+        pdf.ensure(48);
+        pdf.cursor += 8;
+        pdf.text(block.title, MARGIN, pdf.cursor + 10, {
+          size: 10.5,
+          bold: true,
+          color: "#111827",
+        });
+        pdf.cursor += 14;
+
+        block.lines.forEach((line) => {
+          if (line.startsWith("# ")) {
+            pdf.cursor += 3;
+            pdf.paragraph(line.slice(2), { size: 9, bold: true, color: "#1e3a8a" });
+          } else {
+            pdf.paragraph(line, { size: 8.5, color: "#1f2937" });
+          }
+        });
+      });
+
+      pdf.cursor += 6;
     }
   }
 
